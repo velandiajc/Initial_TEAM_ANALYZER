@@ -1,0 +1,32 @@
+# Virtual environments
+.venv/
+.venv-1/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local data / sensitive files
+Data/
+Reports/
+
+# Raw exports / databases / audio
+*.csv
+*.xlsx
+*.xls
+*.db
+*.sqlite
+*.sqlite3
+*.mp4
+*.mp3
+*.wav
+*.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
