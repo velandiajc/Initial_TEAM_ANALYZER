@@ -1,0 +1,99 @@
+import unicodedata
+
+
+class SQLiteAgentDiscoveryService:
+
+    def __init__(self, agent_repository):
+        self.agent_repository = agent_repository
+
+    def _normalize_text(self, value):
+        if value is None:
+            return ""
+
+        value = str(value).strip()
+
+        value = unicodedata.normalize("NFKD", value)
+        value = "".join(
+            char for char in value
+            if not unicodedata.combining(char)
+        )
+
+        return value
+
+    def _proper_name_from_last_first(self, name):
+        name = str(name).strip()
+
+        if "," not in name:
+            return name
+
+        last, first = [
+            part.strip()
+            for part in name.split(",", 1)
+        ]
+
+        return f"{first} {last}".strip()
+
+    def _build_aliases(self, agent_name, agent_no):
+        proper_name = self._proper_name_from_last_first(agent_name)
+
+        aliases = {
+            str(agent_no).strip(),
+            str(agent_name).strip(),
+            proper_name,
+            self._normalize_text(agent_name),
+            self._normalize_text(proper_name),
+        }
+
+        return sorted(
+            alias for alias in aliases
+            if alias
+        )
+
+    def discover_from_surveys(self, surveys):
+        created = 0
+        updated = 0
+
+        for survey in surveys:
+            agent_no = str(survey.agent_id).strip()
+            agent_name = str(survey.agent_name).strip()
+
+            if not agent_no and not agent_name:
+                continue
+
+            existing_agent_id = self.agent_repository.find_agent_id(
+                agent_no
+            )
+
+            proper_name = self._proper_name_from_last_first(
+                agent_name
+            )
+
+            aliases = self._build_aliases(
+                agent_name,
+                agent_no
+            )
+
+            agent = {
+                "agent_id": agent_no,
+                "employee_id": agent_no,
+                "name": proper_name,
+                "email": "",
+                "nice_name": agent_name,
+                "cxone_name": proper_name,
+                "status": "Active",
+                "supervisor": "",
+                "aliases": aliases,
+            }
+
+            self.agent_repository.upsert_agent(agent)
+
+            if existing_agent_id:
+                updated += 1
+            else:
+                created += 1
+
+        return {
+            "created": created,
+            "updated": updated
+        }
+    
