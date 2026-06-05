@@ -11,6 +11,7 @@ class WorksheetInventory:
     sheet_name: str
     row_count: int
     column_count: int
+    header_row_number: int | None
     column_names: list[str]
     sample_rows: list[dict]
 
@@ -46,8 +47,28 @@ class WorkbookIngestionResult:
 
 
 class WorkbookIngestionService:
+    HEADER_SCAN_LIMIT = 20
     SAMPLE_ROW_LIMIT = 5
     CELL_VALUE_LIMIT = 120
+
+    HEADER_KEYWORDS = {
+        "adherence",
+        "agent",
+        "agent name",
+        "attendance",
+        "brand",
+        "call id",
+        "contact id",
+        "csat",
+        "disposition",
+        "id",
+        "interaction id",
+        "osat",
+        "qa",
+        "schedule",
+        "status",
+        "supervisor",
+    }
 
     OSAT_COLUMNS = {
         "osat",
@@ -132,6 +153,7 @@ class WorkbookIngestionService:
                     sheet_name=sheet["sheet_name"],
                     row_count=len(rows),
                     column_count=len(column_names),
+                    header_row_number=sheet["header_row_number"],
                     column_names=column_names,
                     sample_rows=self._sample_rows(
                         column_names,
@@ -183,6 +205,10 @@ class WorkbookIngestionService:
                     "",
                     f"- Row count: {sheet.row_count}",
                     f"- Column count: {sheet.column_count}",
+                    (
+                        "- Detected header row: "
+                        f"{sheet.header_row_number or 'Not detected'}"
+                    ),
                     "",
                     "### Columns",
                     "",
@@ -308,13 +334,14 @@ class WorkbookIngestionService:
                 dtype=object
             )
 
-            column_names, rows = self._split_header_and_rows(
+            column_names, rows, header_row_number = self._split_header_and_rows(
                 raw_dataframe
             )
 
             sheets.append(
                 {
                     "sheet_name": sheet_name,
+                    "header_row_number": header_row_number,
                     "column_names": column_names,
                     "rows": rows,
                 }
@@ -337,21 +364,78 @@ class WorkbookIngestionService:
 
         return path
 
-    def _split_header_and_rows(self, dataframe) -> tuple[list[str], list[list]]:
+    def _split_header_and_rows(
+        self,
+        dataframe
+    ) -> tuple[list[str], list[list], int | None]:
         if dataframe.empty:
-            return [], []
+            return [], [], None
 
-        header_values = dataframe.iloc[0].tolist()
+        header_row_index = self._detect_header_row_index(dataframe)
+
+        if header_row_index is None:
+            return [], [], None
+
+        header_values = dataframe.iloc[header_row_index].tolist()
         column_names = [
             self._clean_column_name(value)
             for value in header_values
         ]
-        rows = dataframe.iloc[1:].values.tolist()
+        rows = dataframe.iloc[header_row_index + 1:].values.tolist()
 
-        return column_names, rows
+        return column_names, rows, header_row_index + 1
+
+    def _detect_header_row_index(self, dataframe) -> int | None:
+        row_limit = min(
+            self.HEADER_SCAN_LIMIT,
+            len(dataframe)
+        )
+        best_row_index = None
+        best_score = None
+
+        for row_index in range(row_limit):
+            row_values = dataframe.iloc[row_index].tolist()
+            non_blank_count = sum(
+                not self._is_blank_value(value)
+                for value in row_values
+            )
+
+            if non_blank_count == 0:
+                continue
+
+            keyword_count = self._header_keyword_count(row_values)
+            score = (
+                keyword_count > 0,
+                keyword_count,
+                non_blank_count,
+                -row_index,
+            )
+
+            if best_score is None or score > best_score:
+                best_score = score
+                best_row_index = row_index
+
+        return best_row_index
+
+    def _header_keyword_count(self, row_values: list) -> int:
+        count = 0
+
+        for value in row_values:
+            normalized = self._normalize_column_name(
+                self._clean_column_name(value)
+            )
+
+            if not normalized:
+                continue
+
+            if normalized in self.HEADER_KEYWORDS:
+                count += 1
+
+        return count
 
     def _validate_sheet(self, sheet: dict) -> list[WorkbookValidationIssue]:
         sheet_name = sheet["sheet_name"]
+        header_row_number = sheet["header_row_number"]
         column_names = sheet["column_names"]
         rows = sheet["rows"]
         issues = []
@@ -373,8 +457,13 @@ class WorkbookIngestionService:
         )
 
         column_keys = self._unique_column_keys(column_names)
+        first_data_row_number = (
+            header_row_number + 1
+            if header_row_number is not None
+            else 1
+        )
 
-        for row_index, row in enumerate(rows, start=2):
+        for row_index, row in enumerate(rows, start=first_data_row_number):
             row_values = list(row)
 
             if self._is_blank_row(row_values):
@@ -418,8 +507,10 @@ class WorkbookIngestionService:
     ) -> list[WorkbookValidationIssue]:
         issues = []
         normalized_counts = Counter(
-            column_name.strip().lower()
+            normalized
             for column_name in column_names
+            for normalized in [column_name.strip().lower()]
+            if normalized
         )
 
         for column_name, count in normalized_counts.items():
