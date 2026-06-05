@@ -3,3 +3,4 @@ openpyxl
 faster-whisper
 ffmpeg-python
 pyyaml
+pytest
