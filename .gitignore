@@ -25,14 +25,11 @@ Reports/
 *.wav
 *.json
 
+# Runtime / tool workspaces
+.codex/
+
 # OS / editor
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
-<<<<<<< HEAD
-__pycache__/
-*.pyc
-=======
-.codex/
->>>>>>> origin/main
