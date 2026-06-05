@@ -7,11 +7,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.services.workbook_inventory_service import WorkbookInventoryService
+from app.services.workbook_ingestion_service import WorkbookIngestionService
 
 
 WORKBOOK_FOLDER = PROJECT_ROOT / "Data" / "raw" / "workbooks"
-OUTPUT_PATH = PROJECT_ROOT / "Reports" / "workbook_inventory.md"
+REPORTS_FOLDER = PROJECT_ROOT / "Reports"
 
 
 class NoWorkbookFoundError(Exception):
@@ -34,13 +34,19 @@ def latest_xlsx(folder: Path) -> Path:
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Generate a Markdown inventory report for an .xlsx workbook."
+        description=(
+            "Generate workbook inventory and validation reports "
+            "for an .xlsx workbook."
+        )
     )
 
     parser.add_argument(
         "workbook_path",
         nargs="?",
-        help="Optional path to an .xlsx workbook. Defaults to the latest file in Data/raw/workbooks/."
+        help=(
+            "Optional path to an .xlsx workbook. Defaults to the latest "
+            "file in Data/raw/workbooks/."
+        )
     )
 
     return parser.parse_args()
@@ -61,24 +67,17 @@ def main():
             args.workbook_path
         )
 
-        service = WorkbookInventoryService()
-        inventory = service.build_inventory(
-            workbook_path
-        )
-        markdown = service.render_markdown(
-            inventory
+        service = WorkbookIngestionService()
+        service.write_reports(
+            workbook_path,
+            REPORTS_FOLDER
         )
 
-        OUTPUT_PATH.parent.mkdir(
-            parents=True,
-            exist_ok=True
+        print(
+            "Workbook reports created: "
+            f"{REPORTS_FOLDER / 'workbook_inventory.md'} and "
+            f"{REPORTS_FOLDER / 'workbook_validation.md'}"
         )
-        OUTPUT_PATH.write_text(
-            markdown,
-            encoding="utf-8"
-        )
-
-        print(f"Workbook inventory report created: {OUTPUT_PATH}")
     except (FileNotFoundError, ValueError, NoWorkbookFoundError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
