@@ -43,6 +43,30 @@ def create_problem_workbook(path):
     workbook.save(path)
 
 
+def create_delayed_header_workbook(path):
+    workbook = Workbook()
+
+    roaster = workbook.active
+    roaster.title = "Roaster"
+    roaster.append(["Roaster Operational Report"])
+    roaster.append([])
+    roaster.append([])
+    roaster.append(["Generated for supervisor review"])
+    roaster.append(["Agent Name", "ID", "Supervisor", "Status", "Schedule"])
+    roaster.append(["Agent One", "A001", "Supervisor One", "Active", "Morning"])
+    roaster.append(["Agent Two", "A002", "Supervisor Two", "Leave", "Evening"])
+
+    qa_work = workbook.create_sheet("QA_WORK")
+    qa_work.append([])
+    qa_work.append([])
+    qa_work.append(["QA Work Queue"])
+    qa_work.append([])
+    qa_work.append(["Agent Name", "Contact ID", "QA", "Disposition"])
+    qa_work.append(["Agent One", "C001", 95, "Complete"])
+
+    workbook.save(path)
+
+
 def issue_types(validation):
     return [issue.issue_type for issue in validation.issues]
 
@@ -78,6 +102,68 @@ def test_inventory_captures_sheet_shape_columns_and_samples(tmp_path):
         "QA",
     ]
     assert survey_sheet.sample_rows[0]["Agent Name"] == "Agent One"
+
+
+def test_detects_header_on_row_five(tmp_path):
+    workbook_path = tmp_path / "delayed_header.xlsx"
+    create_delayed_header_workbook(workbook_path)
+
+    inventory = WorkbookIngestionService().build_inventory(workbook_path)
+    roaster_sheet = inventory.sheets[0]
+
+    assert roaster_sheet.header_row_number == 5
+    assert roaster_sheet.column_names == [
+        "Agent Name",
+        "ID",
+        "Supervisor",
+        "Status",
+        "Schedule",
+    ]
+    assert roaster_sheet.row_count == 2
+
+
+def test_blank_rows_before_header_are_not_validation_issues(tmp_path):
+    workbook_path = tmp_path / "delayed_header.xlsx"
+    create_delayed_header_workbook(workbook_path)
+
+    validation = WorkbookIngestionService().validate_workbook(workbook_path)
+
+    blank_issues = [
+        issue
+        for issue in validation.issues
+        if issue.issue_type == "blank_row"
+    ]
+
+    assert blank_issues == []
+
+
+def test_title_row_before_header_is_not_used_as_header(tmp_path):
+    workbook_path = tmp_path / "delayed_header.xlsx"
+    create_delayed_header_workbook(workbook_path)
+
+    inventory = WorkbookIngestionService().build_inventory(workbook_path)
+    roaster_sheet = inventory.sheets[0]
+
+    assert roaster_sheet.header_row_number == 5
+    assert "Roaster Operational Report" not in roaster_sheet.column_names
+    assert roaster_sheet.sample_rows[0]["Agent Name"] == "Agent One"
+
+
+def test_duplicate_blank_column_names_do_not_count_as_duplicate_column(tmp_path):
+    workbook_path = tmp_path / "blank_headers.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Blank Headers"
+    sheet.append(["Agent Name", None, None, "OSAT"])
+    sheet.append(["Agent One", "unused", "unused", 9])
+    workbook.save(workbook_path)
+
+    validation = WorkbookIngestionService().validate_workbook(workbook_path)
+
+    assert not any(
+        issue.issue_type == "duplicate_column"
+        for issue in validation.issues
+    )
 
 
 def test_empty_sheet_is_flagged(tmp_path):
@@ -235,6 +321,7 @@ def test_renderers_generate_inventory_and_validation_markdown(tmp_path):
 
     assert "# Workbook Inventory" in inventory_markdown
     assert "## Sheet: Surveys" in inventory_markdown
+    assert "- Detected header row: 1" in inventory_markdown
     assert "| Agent Name | Agent ID | OSAT | CSAT | QA | OSAT |" in inventory_markdown
     assert "# Workbook Validation" in validation_markdown
     assert "osat_above_10" in validation_markdown
