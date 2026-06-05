@@ -168,7 +168,7 @@ class WorkbookInventoryService:
 
         lines = [
             "| " + " | ".join(header) + " |",
-            "| " + " | ".join("---" for _ in column_names) + " |",
+            "|" + "|".join("---" for _ in column_names) + "|",
         ]
 
         for row in sample_rows:
