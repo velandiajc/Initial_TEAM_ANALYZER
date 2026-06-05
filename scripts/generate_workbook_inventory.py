@@ -8,6 +8,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.services.workbook_ingestion_service import WorkbookIngestionService
+from app.services.workbook_entity_discovery_service import (
+    WorkbookEntityDiscoveryService,
+)
 
 
 WORKBOOK_FOLDER = PROJECT_ROOT / "Data" / "raw" / "workbooks"
@@ -73,10 +76,17 @@ def main():
             REPORTS_FOLDER
         )
 
+        entity_service = WorkbookEntityDiscoveryService()
+        entity_service.write_report(
+            REPORTS_FOLDER / "workbook_inventory.md",
+            REPORTS_FOLDER / "workbook_entities.md"
+        )
+
         print(
             "Workbook reports created: "
             f"{REPORTS_FOLDER / 'workbook_inventory.md'} and "
-            f"{REPORTS_FOLDER / 'workbook_validation.md'}"
+            f"{REPORTS_FOLDER / 'workbook_validation.md'} and "
+            f"{REPORTS_FOLDER / 'workbook_entities.md'}"
         )
     except (FileNotFoundError, ValueError, NoWorkbookFoundError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
