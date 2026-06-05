@@ -28,5 +28,26 @@ Markdown Reports
 
 ## Run
 
+Place survey CSV exports in:
+
+```text
+Data/raw/surveys/
+```
+
+The pipeline creates local runtime folders automatically:
+
+- `Data/raw/surveys/`
+- `Data/database/`
+- `Reports/`
+
+Generated data, SQLite databases, reports, CSVs, and virtual environments are ignored by Git.
+
 ```bash
 python main.py
+```
+
+To clear generated database and report outputs before running:
+
+```bash
+python main.py --reset
+```

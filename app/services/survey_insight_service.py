@@ -196,11 +196,12 @@ class SurveyInsightService:
 
         return prompt_file.read_text(encoding="utf-8")
 
-    def export_markdown_report(self, output_path):
+    def export_markdown_report(self, output_path, insights=None):
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        insights = self.build_insights()
+        if insights is None:
+            insights = self.build_insights()
 
         total = insights["total_surveys"]
         promoters = len(insights["promoters"])

@@ -1,21 +1,46 @@
 import argparse
 import asyncio
-import argparse
-from app.services.cleanup_service import CleanupService
-from app.utils.file_finder import FileFinder
+from contextlib import contextmanager
+from pathlib import Path
+from time import perf_counter
 
+from app.services.agent_registry import AgentRegistry
 from app.services.cleanup_service import CleanupService
 from app.services.database_service import DatabaseService
+from app.services.sqlite_agent_discovery_service import SQLiteAgentDiscoveryService
 from app.services.sqlite_agent_repository import SQLiteAgentRepository
 from app.services.sqlite_survey_repository import SQLiteSurveyRepository
-from app.services.sqlite_agent_discovery_service import SQLiteAgentDiscoveryService
-from app.services.agent_registry import AgentRegistry
-from app.services.survey_loader import SurveyLoader
 from app.services.survey_insight_service import SurveyInsightService
+from app.services.survey_loader import SurveyLoader
+from app.utils.file_finder import FileFinder
 
 
-DB_PATH = "Data/database/team_analyzer.db"
-SURVEY_FOLDER = "Data/raw/surveys"
+DB_PATH = Path("Data/database/team_analyzer.db")
+SURVEY_FOLDER = Path("Data/raw/surveys")
+REPORTS_FOLDER = Path("Reports")
+SURVEY_INSIGHTS_REPORT = REPORTS_FOLDER / "survey_insights.md"
+
+
+class NoSurveyCsvFoundError(Exception):
+    pass
+
+
+@contextmanager
+def timed_step(step_name: str):
+    started_at = perf_counter()
+    print(f"[{step_name}] started")
+
+    try:
+        yield
+    finally:
+        elapsed = perf_counter() - started_at
+        print(f"[{step_name}] completed in {elapsed:.2f}s")
+
+
+def ensure_local_folders():
+    SURVEY_FOLDER.mkdir(parents=True, exist_ok=True)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    REPORTS_FOLDER.mkdir(parents=True, exist_ok=True)
 
 
 async def run_cleanup(reset: bool):
@@ -35,10 +60,17 @@ async def initialize_database():
 
 
 async def find_latest_survey():
-    latest_survey = await asyncio.to_thread(
-        FileFinder.latest_csv,
-        SURVEY_FOLDER
-    )
+    try:
+        latest_survey = await asyncio.to_thread(
+            FileFinder.latest_csv,
+            SURVEY_FOLDER
+        )
+    except FileNotFoundError as exc:
+        raise NoSurveyCsvFoundError(
+            "No survey CSV files were found.\n"
+            f"Place at least one .csv file in {SURVEY_FOLDER} and run "
+            "`python main.py` again."
+        ) from exc
 
     print(f"Latest survey file found: {latest_survey.name}")
 
@@ -97,51 +129,60 @@ async def save_surveys(database, surveys):
     print(f"SQLite survey load completed: {len(surveys)} surveys")
 
 
-async def create_survey_insights(surveys):
+def create_survey_insight_service(surveys):
     registry = AgentRegistry()
-    insight_service = SurveyInsightService(
+    return SurveyInsightService(
         surveys,
         registry
     )
 
+
+async def build_survey_insights(insight_service):
+    return await asyncio.to_thread(
+        insight_service.build_insights
+    )
+
+
+async def export_survey_insights(insight_service, insights):
     report_path = await asyncio.to_thread(
         insight_service.export_markdown_report,
-        "Reports/survey_insights.md"
+        SURVEY_INSIGHTS_REPORT,
+        insights
     )
 
     print(f"Survey insights report created: {report_path}")
 
 
 async def run_pipeline(reset: bool):
-    await run_cleanup(reset)
+    with timed_step("setup"):
+        await run_cleanup(reset)
+        ensure_local_folders()
+        database = await initialize_database()
 
-    database = await initialize_database()
+    with timed_step("file discovery"):
+        latest_survey = await find_latest_survey()
 
-    latest_survey = await find_latest_survey()
+    with timed_step("CSV loading"):
+        surveys = await load_surveys(latest_survey)
 
-    surveys = await load_surveys(latest_survey)
+    with timed_step("agent discovery"):
+        await discover_agents(database, surveys)
 
-    await discover_agents(database, surveys)
+    with timed_step("survey persistence"):
+        await save_surveys(database, surveys)
 
-    await save_surveys(database, surveys)
+    insight_service = create_survey_insight_service(surveys)
 
-    await create_survey_insights(surveys)
+    with timed_step("insight generation"):
+        insights = await build_survey_insights(insight_service)
+
+    with timed_step("markdown export"):
+        await export_survey_insights(insight_service, insights)
 
     print("")
     print("TEAM_ANALYZER pipeline completed.")
     print(f"Database: {DB_PATH}")
 
-def main(reset=False):
-
-    cleanup = CleanupService()
-
-    if reset:
-        print("Running full cleanup...")
-        cleanup.run_full_cleanup()
-    else:
-        cleanup.run_light_cleanup()
-
-    # aquí sigue tu pipeline actual
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -156,31 +197,20 @@ def parse_args():
 
     return parser.parse_args()
 
-from pathlib import Path
 
-print(
-    Path(
-        "app/prompts/survey_insights_prompt.md"
-    ).exists()
-)
-
-if __name__ == "__main__":
+def main():
     args = parse_args()
 
-    asyncio.run(
-        run_pipeline(
-            reset=args.reset
+    try:
+        asyncio.run(
+            run_pipeline(
+                reset=args.reset
+            )
         )
-    )
+    except NoSurveyCsvFoundError as exc:
+        print("")
+        print(exc)
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--reset",
-        action="store_true",
-        help="Deletes generated reports, database, cache and temporary outputs before running."
-    )
-
-    args = parser.parse_args()
-
-    main(reset=args.reset)
+    main()
