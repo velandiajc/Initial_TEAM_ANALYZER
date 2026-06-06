@@ -246,6 +246,10 @@ class SQLiteKPIDefinitionRepository:
     ) -> None:
         context = require_tenant_context(context)
         self._require_same_tenant(context, formula_version.tenant_id)
+        self._reject_approved_formula_mutation(
+            context,
+            formula_version
+        )
 
         with self.database_service.connect() as conn:
             cursor = conn.cursor()
@@ -261,9 +265,13 @@ class SQLiteKPIDefinitionRepository:
                     approved_by,
                     created_at,
                     approved_at,
+                    effective_from,
+                    effective_to,
+                    supersedes_formula_version_id,
+                    is_current,
                     notes
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 formula_version.tenant_id,
                 formula_version.formula_version_id,
@@ -275,6 +283,10 @@ class SQLiteKPIDefinitionRepository:
                 formula_version.approved_by,
                 _dt_to_text(formula_version.created_at),
                 _dt_to_text(formula_version.approved_at),
+                _dt_to_text(formula_version.effective_from),
+                _dt_to_text(formula_version.effective_to),
+                formula_version.supersedes_formula_version_id,
+                1 if formula_version.is_current else 0,
                 formula_version.notes,
             ))
             conn.commit()
@@ -300,6 +312,10 @@ class SQLiteKPIDefinitionRepository:
                     approved_by,
                     created_at,
                     approved_at,
+                    effective_from,
+                    effective_to,
+                    supersedes_formula_version_id,
+                    is_current,
                     notes
                 FROM formula_versions
                 WHERE tenant_id = ?
@@ -336,6 +352,10 @@ class SQLiteKPIDefinitionRepository:
                     approved_by,
                     created_at,
                     approved_at,
+                    effective_from,
+                    effective_to,
+                    supersedes_formula_version_id,
+                    is_current,
                     notes
                 FROM formula_versions
                 WHERE tenant_id = ?
@@ -351,6 +371,38 @@ class SQLiteKPIDefinitionRepository:
             self._formula_from_row(row)
             for row in rows
         ]
+
+    def get_approved_formulas_for_period(
+        self,
+        context: TenantContext | None,
+        kpi_id: str,
+        period_start: datetime,
+        period_end: datetime
+    ) -> list[FormulaVersion]:
+        formulas = [
+            formula
+            for formula in self.list_formula_versions(context, kpi_id)
+            if formula.is_approved()
+        ]
+
+        return [
+            formula
+            for formula in formulas
+            if formula.covers_period(
+                period_start,
+                period_end
+            )
+        ]
+
+    def get_formula_lineage(
+        self,
+        context: TenantContext | None,
+        kpi_id: str
+    ) -> list[FormulaVersion]:
+        return self.list_formula_versions(
+            context,
+            kpi_id
+        )
 
     def _definition_from_row(self, row: tuple[Any, ...]) -> KPIDefinition:
         return KPIDefinition(
@@ -394,7 +446,11 @@ class SQLiteKPIDefinitionRepository:
             approved_by=row[7],
             created_at=_text_to_dt(row[8]),
             approved_at=_text_to_dt(row[9]) if row[9] else None,
-            notes=row[10] or "",
+            effective_from=_text_to_dt(row[10]) if row[10] else None,
+            effective_to=_text_to_dt(row[11]) if row[11] else None,
+            supersedes_formula_version_id=row[12],
+            is_current=bool(row[13]),
+            notes=row[14] or "",
         )
 
     def _require_same_tenant(
@@ -404,6 +460,37 @@ class SQLiteKPIDefinitionRepository:
     ) -> None:
         if context.tenant_id != tenant_id:
             raise PermissionError("Repository access must be tenant-scoped.")
+
+    def _reject_approved_formula_mutation(
+        self,
+        context: TenantContext,
+        formula_version: FormulaVersion
+    ) -> None:
+        existing = self.get_formula_version(
+            context,
+            formula_version.formula_version_id
+        )
+
+        if existing is None or not existing.is_approved():
+            return
+
+        protected_fields = [
+            "tenant_id",
+            "kpi_id",
+            "version",
+            "expression",
+            "created_by",
+            "effective_from",
+            "effective_to",
+            "supersedes_formula_version_id",
+        ]
+
+        for field_name in protected_fields:
+            if getattr(existing, field_name) != getattr(formula_version, field_name):
+                raise PermissionError("Approved formulas are immutable.")
+
+        if formula_version.status != FormulaStatus.APPROVED:
+            raise PermissionError("Approved formulas are immutable.")
 
 
 def _dt_to_text(value: datetime | None) -> str | None:
