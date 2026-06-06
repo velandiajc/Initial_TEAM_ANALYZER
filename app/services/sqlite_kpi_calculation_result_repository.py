@@ -41,6 +41,9 @@ class SQLiteKPICalculationResultRepository:
             context,
             result
         )
+        self._validate_source_lineage(
+            result
+        )
 
         with self.database_service.connect() as conn:
             cursor = conn.cursor()
@@ -239,3 +242,25 @@ class SQLiteKPICalculationResultRepository:
             raise ValueError(
                 "Formula version does not belong to the result KPI."
             )
+
+    def _validate_source_lineage(
+        self,
+        result: KPICalculationResult
+    ) -> None:
+        has_source_metadata = any(
+            result.metadata.get(key)
+            for key in [
+                "source_record_ids",
+                "source_references",
+                "source_types",
+            ]
+        )
+
+        if not has_source_metadata:
+            return
+
+        if not result.metadata.get("lineage_id"):
+            raise ValueError("Source lineage is required for source-backed results.")
+
+        if not result.metadata.get("source_version"):
+            raise ValueError("Source version is required for source-backed results.")
