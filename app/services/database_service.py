@@ -100,12 +100,40 @@ class DatabaseService:
                     approved_by TEXT,
                     created_at TEXT NOT NULL,
                     approved_at TEXT,
+                    effective_from TEXT,
+                    effective_to TEXT,
+                    supersedes_formula_version_id TEXT,
+                    is_current INTEGER NOT NULL DEFAULT 1,
                     notes TEXT,
                     PRIMARY KEY (tenant_id, formula_version_id),
                     FOREIGN KEY(tenant_id, kpi_id)
                         REFERENCES kpi_definitions(tenant_id, kpi_id)
                 )
             """)
+            self._ensure_column(
+                cursor,
+                "formula_versions",
+                "effective_from",
+                "TEXT"
+            )
+            self._ensure_column(
+                cursor,
+                "formula_versions",
+                "effective_to",
+                "TEXT"
+            )
+            self._ensure_column(
+                cursor,
+                "formula_versions",
+                "supersedes_formula_version_id",
+                "TEXT"
+            )
+            self._ensure_column(
+                cursor,
+                "formula_versions",
+                "is_current",
+                "INTEGER NOT NULL DEFAULT 1"
+            )
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS kpi_audit_events (
@@ -121,4 +149,46 @@ class DatabaseService:
                 )
             """)
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS kpi_calculation_results (
+                    tenant_id TEXT NOT NULL,
+                    result_id TEXT NOT NULL,
+                    kpi_id TEXT NOT NULL,
+                    formula_version_id TEXT NOT NULL,
+                    formula_version_number TEXT NOT NULL,
+                    period_start TEXT NOT NULL,
+                    period_end TEXT NOT NULL,
+                    scope_json TEXT NOT NULL DEFAULT '{}',
+                    value REAL,
+                    status TEXT NOT NULL,
+                    data_quality_status TEXT NOT NULL,
+                    source_reference TEXT,
+                    calculation_run_id TEXT NOT NULL,
+                    calculated_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (tenant_id, result_id),
+                    FOREIGN KEY(tenant_id, kpi_id)
+                        REFERENCES kpi_definitions(tenant_id, kpi_id)
+                )
+            """)
+
             conn.commit()
+
+    def _ensure_column(
+        self,
+        cursor,
+        table_name,
+        column_name,
+        column_definition
+    ):
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        existing_columns = {
+            row[1]
+            for row in cursor.fetchall()
+        }
+
+        if column_name not in existing_columns:
+            cursor.execute(
+                f"ALTER TABLE {table_name} "
+                f"ADD COLUMN {column_name} {column_definition}"
+            )

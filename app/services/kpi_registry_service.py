@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import uuid4
 
 from app.core.permissions import KPIPermission, RBACService
@@ -158,7 +159,11 @@ class KPIRegistryService:
         version: str,
         expression: str,
         notes: str = "",
-        formula_version_id: str | None = None
+        formula_version_id: str | None = None,
+        effective_from: datetime | None = None,
+        effective_to: datetime | None = None,
+        supersedes_formula_version_id: str | None = None,
+        is_current: bool = True
     ) -> FormulaVersion:
         context = require_tenant_context(context)
         self.rbac_service.require_permission(
@@ -174,6 +179,10 @@ class KPIRegistryService:
             expression=expression,
             created_by=context.user_id,
             status=FormulaStatus.PENDING_APPROVAL,
+            effective_from=effective_from,
+            effective_to=effective_to,
+            supersedes_formula_version_id=supersedes_formula_version_id,
+            is_current=is_current,
             notes=notes,
         )
 
@@ -318,7 +327,11 @@ class FormulaGovernanceService:
         version: str,
         expression: str,
         notes: str = "",
-        formula_version_id: str | None = None
+        formula_version_id: str | None = None,
+        effective_from: datetime | None = None,
+        effective_to: datetime | None = None,
+        supersedes_formula_version_id: str | None = None,
+        is_current: bool = True
     ) -> FormulaVersion:
         return self.registry_service.submit_formula_version(
             context,
@@ -327,6 +340,10 @@ class FormulaGovernanceService:
             expression=expression,
             notes=notes,
             formula_version_id=formula_version_id,
+            effective_from=effective_from,
+            effective_to=effective_to,
+            supersedes_formula_version_id=supersedes_formula_version_id,
+            is_current=is_current,
         )
 
     def approve_formula_version(
