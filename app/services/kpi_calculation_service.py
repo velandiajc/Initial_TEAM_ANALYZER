@@ -33,7 +33,8 @@ class KPICalculationService:
         formula_handler_registry,
         result_repository,
         audit_service,
-        rbac_service: RBACService | None = None
+        rbac_service: RBACService | None = None,
+        source_eligibility_service=None
     ):
         self.definition_repository = definition_repository
         self.formula_version_service = formula_version_service
@@ -41,6 +42,7 @@ class KPICalculationService:
         self.result_repository = result_repository
         self.audit_service = audit_service
         self.rbac_service = rbac_service or RBACService()
+        self.source_eligibility_service = source_eligibility_service
 
     def calculate_kpi(
         self,
@@ -118,6 +120,10 @@ class KPICalculationService:
                 formula_version_id=formula_version.formula_version_id,
                 status="selected",
             )
+            source_metadata = self._confirm_source_eligibility(
+                context,
+                calculation_request
+            )
 
             handler = self.formula_handler_registry.require_handler(
                 formula_version.expression
@@ -142,7 +148,10 @@ class KPICalculationService:
                 data_quality_status=handler_result.data_quality_status,
                 source_reference=handler_result.source_reference,
                 calculation_run_id=run_id,
-                metadata=handler_result.metadata,
+                metadata={
+                    **handler_result.metadata,
+                    **source_metadata,
+                },
             )
             self._validate_tenant_boundary(
                 context.tenant_id,
@@ -293,6 +302,37 @@ class KPICalculationService:
             value=float(value),
             source_reference=calculation_request.source_data.source_reference,
         )
+
+    def _confirm_source_eligibility(
+        self,
+        context: TenantContext,
+        calculation_request: KPICalculationRequest
+    ) -> dict[str, Any]:
+        if not self._has_source_inputs(calculation_request):
+            return {}
+
+        if self.source_eligibility_service is None:
+            raise KPICalculationRejectedError(
+                "Source eligibility service is required for source-backed KPI calculation.",
+                KPICalculationStatus.FAILED_VALIDATION
+            )
+
+        return self.source_eligibility_service.confirm_source_eligibility(
+            context,
+            source_records=calculation_request.source_records,
+            source_record_ids=calculation_request.source_record_ids,
+            source_references=calculation_request.source_references,
+        )
+
+    def _has_source_inputs(
+        self,
+        calculation_request: KPICalculationRequest
+    ) -> bool:
+        return any([
+            calculation_request.source_records,
+            calculation_request.source_record_ids,
+            calculation_request.source_references,
+        ])
 
     def _audit_rejection(
         self,
