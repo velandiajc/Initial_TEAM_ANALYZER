@@ -36,6 +36,7 @@ The active production-like path is `main.py` plus the `app/services` survey pipe
 | `app/engines/rules_engine.py` | Framework rules evaluation | Partial | Evaluates metrics against framework rules; not connected to survey, QA, or risk pipeline. |
 | `app/models/agent.py` | Agent dataclass | Implemented | Used by `AgentRegistry` and agent identity logic. |
 | `app/models/kpi.py` | KPI governance models | Implemented | Defines KPI definitions, domains, lifecycle states, thresholds, and formula versions without executing formulas. |
+| `app/models/kpi_calculation.py` | KPI calculation models | Implemented | Defines source data, calculation requests, handler results, and traceable KPI calculation results. |
 | `app/models/survey.py` | Survey dataclass | Implemented | Used by `SurveyLoader`, repositories, and insight services. |
 | `app/models/call.py` | Call dataclass | Scaffolded | Represents calls but is not connected to ingestion or persistence. |
 | `app/models/qa_result.py` | QA result dataclass | Scaffolded | Represents QA result fields but is not connected to scoring or persistence. |
@@ -44,8 +45,12 @@ The active production-like path is `main.py` plus the `app/services` survey pipe
 | `app/services/database_service.py` | SQLite schema and connection | Implemented | Creates `agents`, `agent_aliases`, `surveys`, and KPI governance tables. |
 | `app/services/kpi_registry_service.py` | KPI governance registry | Implemented | Registers KPI metadata, governs ownership, thresholds, formula approval, lifecycle transitions, and audit events. |
 | `app/services/kpi_audit_service.py` | KPI governance audit service | Implemented | Creates and reads audit events for governance actions. |
+| `app/services/formula_version_service.py` | Approved formula resolution | Implemented | Resolves approved formulas by tenant, KPI, and effective calculation period; detects missing and overlapping formulas. |
+| `app/services/formula_handler_registry.py` | Controlled formula handler registry | Implemented | Maps approved formula handler keys to registered handlers without expression parsing or dynamic execution. |
+| `app/services/kpi_calculation_service.py` | KPI calculation orchestration | Implemented | Enforces calculate permission, active KPI status, tenant boundaries, formula resolution, handler execution, result persistence, and audit events. |
 | `app/services/sqlite_kpi_definition_repository.py` | SQLite KPI governance repository | Implemented | Tenant-scoped persistence for KPI definitions, thresholds, and formula versions. |
 | `app/services/sqlite_kpi_audit_repository.py` | SQLite KPI audit repository | Implemented | Tenant-scoped persistence for governance audit events. |
+| `app/services/sqlite_kpi_calculation_result_repository.py` | SQLite KPI result repository | Implemented | Tenant-scoped persistence and permission-controlled reads for KPI calculation results. |
 | `app/services/agent_registry.py` | In-memory agent identity lookup | Partial | Supports rich lookup and JSON loading. In active pipeline it is instantiated empty. |
 | `app/services/agent_discovery_service.py` | JSON master-file discovery | Partial | Discovers agents into JSON master file. Mostly superseded by SQLite discovery. |
 | `app/services/sqlite_agent_discovery_service.py` | SQLite-backed agent discovery | Implemented | Discovers and upserts agents and aliases from survey rows. |
@@ -141,7 +146,11 @@ The active production-like path is `main.py` plus the `app/services` survey pipe
 | KPI threshold governance | Implemented | `KPIThreshold`, `SQLiteKPIDefinitionRepository.upsert_threshold` | Threshold metadata is stored tenant-scope; no KPI engine consumes it yet. |
 | Governance auditability | Implemented | `AuditEvent`, `KPIAuditService`, `SQLiteKPIAuditRepository` | Registry actions create tenant-scoped audit events with user attribution. |
 | Governance RBAC | Implemented | `GovernanceRole`, `KPIPermission`, `RBACService` | Defines owner, steward, approver, and admin permissions. |
-| KPI calculation engine | Missing | Explicit Sprint 1 exclusion | Formula execution, results, dashboards, and analytics remain out of scope. |
+| Formula effective dating and lineage | Implemented | `FormulaVersion`, `FormulaVersionService` | Approved formulas include effective dates, supersession metadata, current flag, and historical retrieval. |
+| Approved formula resolution | Implemented | `FormulaVersionService.get_approved_formula_for_period` | Missing formulas and overlapping approved formulas block calculation. |
+| Controlled KPI calculation foundation | Implemented | `KPICalculationService`, `FormulaHandlerRegistry` | Calculates only through registered handlers; no formula DSL, expression parser, or dynamic code execution. |
+| KPI result persistence | Implemented | `KPICalculationResult`, `SQLiteKPICalculationResultRepository` | Results store formula lineage, tenant, period, scope, value, status, source reference, and run ID. |
+| KPI analytics and dashboards | Missing | Explicit Sprint 2 exclusion | Reporting, dashboards, analytics, risk scoring, coaching, and AI remain out of scope. |
 
 ## Agent Analytics Capabilities
 
