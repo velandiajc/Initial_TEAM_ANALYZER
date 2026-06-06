@@ -9,10 +9,16 @@ __pycache__/
 *.pyo
 *.pyd
 .tmp_pytest/
+.pytest_cache/
 
 # Local data / sensitive files
 Data/
+Data/raw/
 Reports/
+Reports/*.db
+Reports/*.csv
+Reports/*.xlsx
+Reports/*demo*.db
 
 # Raw exports / databases / audio
 *.csv
