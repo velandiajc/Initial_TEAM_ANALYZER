@@ -269,35 +269,68 @@ class AgentScorecardService:
             return ""
 
         return self._clean_value(
-            row_values.get(column_name)
+            row_values.get(column_name),
+            field_name
         )
 
     def _supervisor_recommendation(
         self,
         scorecard: AgentScorecard
     ) -> str:
+        risk_level = self._display_value(scorecard.risk_level)
+        critical_flag = self._display_value(scorecard.critical_flag)
+        dsat_driver = self._display_value(scorecard.main_dsat_driver)
+        qa_gap = self._display_value(scorecard.qa_main_gap)
+        coaching_action = self._display_value(scorecard.coaching_action)
+        coaching_reason = self._display_value(scorecard.coaching_reason)
+        open_dsat = self._display_value(scorecard.open_dsat)
+        detractors = self._display_value(scorecard.detractors)
+        normalized_risk = self._normalize(scorecard.risk_level)
+        exposure = (
+            f"{open_dsat} open DSAT and {detractors} detractors"
+        )
+
         if self._is_affirmative(scorecard.critical_flag):
             return (
-                "Schedule immediate supervisor follow-up and review the "
-                "critical flag, DSAT driver, and coaching action."
+                "Schedule immediate supervisor follow-up. "
+                f"Risk level: {risk_level}. Critical flag: {critical_flag}. "
+                f"Prioritize DSAT driver '{dsat_driver}' and QA gap "
+                f"'{qa_gap}'. Execute coaching action: {coaching_action}. "
+                f"Reason: {coaching_reason}. Current exposure: {exposure}."
             )
 
-        if self._normalize(scorecard.risk_level) in {
+        if normalized_risk in {
             "high",
             "critical",
             "red",
         }:
             return (
-                "Prioritize a risk review and align the next coaching action "
-                "to the main DSAT driver and QA gap."
+                "Prioritize a risk review this week. "
+                f"Risk level: {risk_level}. Focus coaching on DSAT driver "
+                f"'{dsat_driver}' and QA gap '{qa_gap}'. Use action "
+                f"'{coaching_action}' because {coaching_reason}. "
+                f"Monitor exposure: {exposure}."
+            )
+
+        if normalized_risk in {
+            "medium",
+            "moderate",
+            "yellow",
+        }:
+            return (
+                "Schedule targeted coaching in the next supervisor 1:1. "
+                f"Risk level: {risk_level}. Review DSAT driver "
+                f"'{dsat_driver}', QA gap '{qa_gap}', and action "
+                f"'{coaching_action}'. Track {exposure} for movement."
             )
 
         if self._positive_number(scorecard.open_dsat) or self._positive_number(
             scorecard.detractors
         ):
             return (
-                "Review open DSAT and detractor patterns, then coach on the "
-                "highest-impact customer experience driver."
+                "Review customer experience exposure before the next shift. "
+                f"Current exposure: {exposure}. Coach against DSAT driver "
+                f"'{dsat_driver}' and QA gap '{qa_gap}'."
             )
 
         if self._is_affirmative(scorecard.coaching_needed):
@@ -352,14 +385,81 @@ class AgentScorecardService:
             for label, value in fields
         ]
 
-    def _clean_value(self, value: Any) -> str:
+    def _clean_value(self, value: Any, field_name: str | None = None) -> str:
         if self._is_blank_value(value):
             return ""
 
         if isinstance(value, float) and value.is_integer():
-            return str(int(value))
+            text = str(int(value))
+        else:
+            text = str(value).strip()
 
-        return str(value).strip()
+        text = self._clean_mojibake(text)
+
+        if field_name in {
+            "csat_mtd",
+            "qa_mtd",
+        }:
+            return self._format_percentage(text)
+
+        return text
+
+    def _format_percentage(self, value: str) -> str:
+        text = value.strip()
+
+        if not text:
+            return ""
+
+        numeric_text = text.replace("%", "").replace(",", "")
+
+        try:
+            numeric_value = float(numeric_text)
+        except ValueError:
+            return text
+
+        if 0 <= numeric_value <= 1:
+            numeric_value *= 100
+
+        return f"{numeric_value:.2f}%"
+
+    def _clean_mojibake(self, value: str) -> str:
+        text = value
+
+        if self._looks_like_mojibake(text):
+            for encoding in [
+                "latin1",
+                "cp1252",
+            ]:
+                try:
+                    text = text.encode(encoding).decode("utf-8")
+                    break
+                except UnicodeError:
+                    pass
+
+        replacements = {
+            "\U0001f525": "high urgency",
+        }
+
+        for bad_text, replacement in replacements.items():
+            text = text.replace(bad_text, replacement)
+
+        return " ".join(text.split())
+
+    def _looks_like_mojibake(self, value: str) -> bool:
+        markers = [
+            "\u00c3",
+            "\u00c2",
+            "\u00e2\u20ac",
+            "\u00f0\u0178",
+        ]
+
+        return any(
+            marker in value
+            for marker in markers
+        )
+
+    def _display_value(self, value: str) -> str:
+        return value if value else "not available"
 
     def _is_blank_row(self, row: list) -> bool:
         return all(
