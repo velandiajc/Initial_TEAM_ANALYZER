@@ -8,15 +8,23 @@ from app.models.kpi_calculation import (
     KPICalculationResult,
     KPICalculationStatus,
 )
+from app.services.sqlite_kpi_definition_repository import (
+    SQLiteKPIDefinitionRepository,
+)
 
 
 class SQLiteKPICalculationResultRepository:
     def __init__(
         self,
         database_service,
+        definition_repository=None,
         rbac_service: RBACService | None = None
     ):
         self.database_service = database_service
+        self.definition_repository = (
+            definition_repository
+            or SQLiteKPIDefinitionRepository(database_service)
+        )
         self.rbac_service = rbac_service or RBACService()
 
     def save(
@@ -28,6 +36,10 @@ class SQLiteKPICalculationResultRepository:
         self._require_same_tenant(
             context,
             result.tenant_id
+        )
+        self._validate_result_lineage(
+            context,
+            result
         )
 
         with self.database_service.connect() as conn:
@@ -185,3 +197,45 @@ class SQLiteKPICalculationResultRepository:
     ) -> None:
         if context.tenant_id != tenant_id:
             raise PermissionError("Repository access must be tenant-scoped.")
+
+    def _validate_result_lineage(
+        self,
+        context: TenantContext,
+        result: KPICalculationResult
+    ) -> None:
+        definition = self.definition_repository.get_definition(
+            context,
+            result.kpi_id
+        )
+
+        if definition is None:
+            raise ValueError(f"KPI definition not found: {result.kpi_id}")
+
+        self._require_same_tenant(
+            context,
+            definition.tenant_id
+        )
+
+        formula_version = self.definition_repository.get_formula_version(
+            context,
+            result.formula_version_id
+        )
+
+        if formula_version is None:
+            raise ValueError(
+                f"Formula version not found: {result.formula_version_id}"
+            )
+
+        self._require_same_tenant(
+            context,
+            formula_version.tenant_id
+        )
+        self._require_same_tenant(
+            context,
+            result.tenant_id
+        )
+
+        if formula_version.kpi_id != result.kpi_id:
+            raise ValueError(
+                "Formula version does not belong to the result KPI."
+            )

@@ -4,7 +4,12 @@ import pytest
 
 from app.core.permissions import GovernanceRole
 from app.core.tenant_context import TenantContext
-from app.models.kpi import KPIDefinition, KPIDomain
+from app.models.kpi import (
+    FormulaStatus,
+    FormulaVersion,
+    KPIDefinition,
+    KPIDomain,
+)
 from app.models.kpi_calculation import (
     KPICalculationResult,
     KPICalculationStatus,
@@ -42,6 +47,72 @@ def create_repo(tmp_path):
             created_by="owner-1",
         )
     )
+    definition_repository.upsert_formula_version(
+        context(),
+        FormulaVersion(
+            formula_version_id="formula-1",
+            tenant_id="tenant-1",
+            kpi_id="csat",
+            version="1.0",
+            expression="count_records",
+            created_by="owner-1",
+            status=FormulaStatus.APPROVED,
+            approved_by="approver-1",
+            approved_at=datetime(2026, 1, 1),
+        )
+    )
+    definition_repository.upsert_definition(
+        context(),
+        KPIDefinition(
+            kpi_id="qa",
+            tenant_id="tenant-1",
+            name="QA",
+            domain=KPIDomain.QUALITY,
+            owner_user_id="owner-1",
+            steward_user_id="steward-1",
+            created_by="owner-1",
+        )
+    )
+    definition_repository.upsert_formula_version(
+        context(),
+        FormulaVersion(
+            formula_version_id="qa-formula",
+            tenant_id="tenant-1",
+            kpi_id="qa",
+            version="1.0",
+            expression="count_records",
+            created_by="owner-1",
+            status=FormulaStatus.APPROVED,
+            approved_by="approver-1",
+            approved_at=datetime(2026, 1, 1),
+        )
+    )
+    definition_repository.upsert_definition(
+        context(tenant_id="tenant-2"),
+        KPIDefinition(
+            kpi_id="csat",
+            tenant_id="tenant-2",
+            name="CSAT",
+            domain=KPIDomain.CUSTOMER_EXPERIENCE,
+            owner_user_id="owner-2",
+            steward_user_id="steward-2",
+            created_by="owner-2",
+        )
+    )
+    definition_repository.upsert_formula_version(
+        context(tenant_id="tenant-2"),
+        FormulaVersion(
+            formula_version_id="tenant-2-formula",
+            tenant_id="tenant-2",
+            kpi_id="csat",
+            version="1.0",
+            expression="count_records",
+            created_by="owner-2",
+            status=FormulaStatus.APPROVED,
+            approved_by="approver-2",
+            approved_at=datetime(2026, 1, 1),
+        )
+    )
     return SQLiteKPICalculationResultRepository(database)
 
 
@@ -63,6 +134,12 @@ def result(tenant_id="tenant-1", result_id="result-1"):
         source_reference="survey:test",
         calculation_run_id="run-1",
     )
+
+
+def result_with_formula(formula_version_id):
+    item = result()
+    item.formula_version_id = formula_version_id
+    return item
 
 
 def test_result_repository_persists_and_reads_by_tenant(tmp_path):
@@ -102,6 +179,36 @@ def test_result_repository_rejects_cross_tenant_save(tmp_path):
         repo.save(
             context(tenant_id="tenant-1"),
             result(tenant_id="tenant-2")
+        )
+
+
+def test_result_repository_rejects_formula_from_another_tenant(tmp_path):
+    repo = create_repo(tmp_path)
+
+    with pytest.raises(ValueError, match="Formula version not found"):
+        repo.save(
+            context(),
+            result_with_formula("tenant-2-formula")
+        )
+
+
+def test_result_repository_rejects_formula_for_another_kpi(tmp_path):
+    repo = create_repo(tmp_path)
+
+    with pytest.raises(ValueError, match="does not belong"):
+        repo.save(
+            context(),
+            result_with_formula("qa-formula")
+        )
+
+
+def test_result_repository_rejects_nonexistent_formula_version(tmp_path):
+    repo = create_repo(tmp_path)
+
+    with pytest.raises(ValueError, match="Formula version not found"):
+        repo.save(
+            context(),
+            result_with_formula("missing-formula")
         )
 
 

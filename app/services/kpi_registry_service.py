@@ -11,6 +11,7 @@ from app.models.kpi import (
     KPILifecycle,
     KPIThreshold,
 )
+from app.services.formula_version_service import FormulaVersionService
 
 
 class KPIRegistryService:
@@ -18,11 +19,16 @@ class KPIRegistryService:
         self,
         definition_repository,
         audit_service,
-        rbac_service: RBACService | None = None
+        rbac_service: RBACService | None = None,
+        formula_version_service: FormulaVersionService | None = None
     ):
         self.definition_repository = definition_repository
         self.audit_service = audit_service
         self.rbac_service = rbac_service or RBACService()
+        self.formula_version_service = (
+            formula_version_service
+            or FormulaVersionService(definition_repository)
+        )
 
     def register_kpi(
         self,
@@ -228,6 +234,10 @@ class KPIRegistryService:
             formula_version
         )
         formula_version.approve(context.user_id)
+        self.formula_version_service.validate_no_effective_period_conflict(
+            context,
+            formula_version
+        )
         self.definition_repository.upsert_formula_version(
             context,
             formula_version
