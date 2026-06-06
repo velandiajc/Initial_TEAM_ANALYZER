@@ -29,15 +29,23 @@ The active production-like path is `main.py` plus the `app/services` survey pipe
 | `app/core/framework.py` | Framework model | Partial | Supports rules and metadata, but no production framework definitions are loaded into runtime. |
 | `app/core/metric.py` | Metric model | Partial | Supports target comparison and variance, but not wired into active analytics. |
 | `app/core/observation.py` | Observation model | Partial | Generic observation model for surveys, QA, attendance, calls, transcripts, coaching; not used by runtime. |
+| `app/core/tenant_context.py` | Tenant context model | Implemented | Provides required tenant and user attribution context for KPI governance access. |
+| `app/core/permissions.py` | KPI governance RBAC | Implemented | Defines KPI owner, steward, approver, and governance admin roles plus permission checks. |
+| `app/core/audit.py` | Governance audit event model | Implemented | Captures tenant-scoped governance action records with actor, entity, timestamp, and metadata. |
 | `app/core/rule.py` | Rule and rule result model | Partial | Implements threshold comparisons, but no active business rules use it. |
 | `app/engines/rules_engine.py` | Framework rules evaluation | Partial | Evaluates metrics against framework rules; not connected to survey, QA, or risk pipeline. |
 | `app/models/agent.py` | Agent dataclass | Implemented | Used by `AgentRegistry` and agent identity logic. |
+| `app/models/kpi.py` | KPI governance models | Implemented | Defines KPI definitions, domains, lifecycle states, thresholds, and formula versions without executing formulas. |
 | `app/models/survey.py` | Survey dataclass | Implemented | Used by `SurveyLoader`, repositories, and insight services. |
 | `app/models/call.py` | Call dataclass | Scaffolded | Represents calls but is not connected to ingestion or persistence. |
 | `app/models/qa_result.py` | QA result dataclass | Scaffolded | Represents QA result fields but is not connected to scoring or persistence. |
 | `app/models/transcript.py` | Transcript dataclass | Scaffolded | Represents transcript metadata but is not connected to transcription or persistence. |
 | `app/services/cleanup_service.py` | Runtime cleanup | Implemented | Cleans caches and generated output folders. |
-| `app/services/database_service.py` | SQLite schema and connection | Implemented | Creates `agents`, `agent_aliases`, and `surveys` tables. |
+| `app/services/database_service.py` | SQLite schema and connection | Implemented | Creates `agents`, `agent_aliases`, `surveys`, and KPI governance tables. |
+| `app/services/kpi_registry_service.py` | KPI governance registry | Implemented | Registers KPI metadata, governs ownership, thresholds, formula approval, lifecycle transitions, and audit events. |
+| `app/services/kpi_audit_service.py` | KPI governance audit service | Implemented | Creates and reads audit events for governance actions. |
+| `app/services/sqlite_kpi_definition_repository.py` | SQLite KPI governance repository | Implemented | Tenant-scoped persistence for KPI definitions, thresholds, and formula versions. |
+| `app/services/sqlite_kpi_audit_repository.py` | SQLite KPI audit repository | Implemented | Tenant-scoped persistence for governance audit events. |
 | `app/services/agent_registry.py` | In-memory agent identity lookup | Partial | Supports rich lookup and JSON loading. In active pipeline it is instantiated empty. |
 | `app/services/agent_discovery_service.py` | JSON master-file discovery | Partial | Discovers agents into JSON master file. Mostly superseded by SQLite discovery. |
 | `app/services/sqlite_agent_discovery_service.py` | SQLite-backed agent discovery | Implemented | Discovers and upserts agents and aliases from survey rows. |
@@ -119,6 +127,21 @@ The active production-like path is `main.py` plus the `app/services` survey pipe
 | CSAT overview report | Implemented | `SurveyInsightService.export_markdown_report` | Total, average CSAT, promoters, neutrals, detractors. |
 | Agent survey summary export | Partial | `SurveyAnalyticsService` | Exports CSV but not wired into `main.py`. |
 | Survey data validation | Missing | No validation layer | Missing required-column checks, schema errors, duplicate diagnostics, and quality report. |
+
+## KPI Governance Capabilities
+
+| Capability | Status | Evidence | Notes |
+|---|---:|---|---|
+| KPI domain classification | Implemented | `KPIDomain`, `KPIDefinition.domain` | Supports governed KPI grouping without calculation logic. |
+| KPI ownership model | Implemented | `KPIDefinition.owner_user_id`, `KPIRegistryService.update_ownership` | Owner is required for every KPI definition. |
+| KPI stewardship model | Implemented | `KPIDefinition.steward_user_id`, `KPIRegistryService.update_ownership` | Steward is required for every KPI definition. |
+| KPI lifecycle management | Implemented | `KPILifecycle`, `KPIRegistryService.change_lifecycle` | Lifecycle changes are permission-controlled and audited. |
+| Formula governance | Implemented | `FormulaVersion`, `KPIRegistryService.submit_formula_version` | Formula metadata is versioned and submitted for approval, but not executed. |
+| Formula approval workflow | Implemented | `KPIRegistryService.approve_formula_version`, `RBACService.require_formula_approval` | Formula creators cannot approve their own formula versions. |
+| KPI threshold governance | Implemented | `KPIThreshold`, `SQLiteKPIDefinitionRepository.upsert_threshold` | Threshold metadata is stored tenant-scope; no KPI engine consumes it yet. |
+| Governance auditability | Implemented | `AuditEvent`, `KPIAuditService`, `SQLiteKPIAuditRepository` | Registry actions create tenant-scoped audit events with user attribution. |
+| Governance RBAC | Implemented | `GovernanceRole`, `KPIPermission`, `RBACService` | Defines owner, steward, approver, and admin permissions. |
+| KPI calculation engine | Missing | Explicit Sprint 1 exclusion | Formula execution, results, dashboards, and analytics remain out of scope. |
 
 ## Agent Analytics Capabilities
 

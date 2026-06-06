@@ -52,5 +52,73 @@ class DatabaseService:
                 )
             """)
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS kpi_definitions (
+                    tenant_id TEXT NOT NULL,
+                    kpi_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    domain TEXT NOT NULL,
+                    lifecycle TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    steward_user_id TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (tenant_id, kpi_id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS kpi_thresholds (
+                    tenant_id TEXT NOT NULL,
+                    threshold_id TEXT NOT NULL,
+                    kpi_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    risk_level TEXT NOT NULL,
+                    target REAL,
+                    minimum REAL,
+                    maximum REAL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, threshold_id),
+                    FOREIGN KEY(tenant_id, kpi_id)
+                        REFERENCES kpi_definitions(tenant_id, kpi_id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS formula_versions (
+                    tenant_id TEXT NOT NULL,
+                    formula_version_id TEXT NOT NULL,
+                    kpi_id TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    expression TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    approved_by TEXT,
+                    created_at TEXT NOT NULL,
+                    approved_at TEXT,
+                    notes TEXT,
+                    PRIMARY KEY (tenant_id, formula_version_id),
+                    FOREIGN KEY(tenant_id, kpi_id)
+                        REFERENCES kpi_definitions(tenant_id, kpi_id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS kpi_audit_events (
+                    tenant_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    actor_user_id TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (tenant_id, event_id)
+                )
+            """)
+
             conn.commit()
-            
