@@ -10,6 +10,14 @@ from app.models.kpi_calculation import (
     KPICalculationStatus,
     KPISourceData,
 )
+from app.models.operational_source import (
+    OperationalEntityScope,
+    OperationalSourceRecord,
+    OperationalSourceType,
+    SourceQualityStatus,
+    SourceRegistryEntry,
+    SourceValidationStatus,
+)
 from app.services.database_service import DatabaseService
 from app.services.formula_handler_registry import (
     CountRecordsHandler,
@@ -19,13 +27,22 @@ from app.services.formula_version_service import FormulaVersionService
 from app.services.kpi_audit_service import KPIAuditService
 from app.services.kpi_calculation_service import KPICalculationRejectedError
 from app.services.kpi_calculation_service import KPICalculationService
+from app.services.kpi_source_eligibility_service import (
+    KPISourceEligibilityService,
+)
 from app.services.kpi_registry_service import KPIRegistryService
+from app.services.sqlite_operational_source_repository import (
+    SQLiteOperationalSourceRepository,
+)
 from app.services.sqlite_kpi_audit_repository import SQLiteKPIAuditRepository
 from app.services.sqlite_kpi_calculation_result_repository import (
     SQLiteKPICalculationResultRepository,
 )
 from app.services.sqlite_kpi_definition_repository import (
     SQLiteKPIDefinitionRepository,
+)
+from app.services.sqlite_source_registry_repository import (
+    SQLiteSourceRegistryRepository,
 )
 
 
@@ -59,6 +76,13 @@ def create_services(tmp_path):
         CountRecordsHandler()
     )
     result_repository = SQLiteKPICalculationResultRepository(database)
+    source_registry_repository = SQLiteSourceRegistryRepository(database)
+    source_repository = SQLiteOperationalSourceRepository(database)
+    source_eligibility_service = KPISourceEligibilityService(
+        source_registry_repository,
+        source_repository,
+        audit_service,
+    )
 
     return {
         "audit_repository": audit_repository,
@@ -69,10 +93,13 @@ def create_services(tmp_path):
             handler_registry,
             result_repository,
             audit_service,
+            source_eligibility_service=source_eligibility_service,
         ),
         "definition_repository": definition_repository,
         "registry_service": registry_service,
         "result_repository": result_repository,
+        "source_registry_repository": source_registry_repository,
+        "source_repository": source_repository,
     }
 
 
@@ -132,6 +159,38 @@ def calculation_request(tenant_id="tenant-1", kpi_id="csat"):
     )
 
 
+def source_registry_entry():
+    return SourceRegistryEntry(
+        tenant_id="tenant-1",
+        source_type=OperationalSourceType.SURVEY,
+        source_name="Survey",
+        source_owner="owner-1",
+        source_steward="steward-1",
+        allowed_entity_scopes=[OperationalEntityScope.AGENT],
+    )
+
+
+def operational_source(
+    validation_status=SourceValidationStatus.VALID,
+    data_quality_status=SourceQualityStatus.VALID
+):
+    return OperationalSourceRecord(
+        tenant_id="tenant-1",
+        source_record_id="source-1",
+        source_type=OperationalSourceType.SURVEY,
+        source_reference="survey:2026-03",
+        source_version="v1",
+        lineage_id="lineage-1",
+        period_start=datetime(2026, 3, 1),
+        period_end=datetime(2026, 3, 31),
+        entity_type=OperationalEntityScope.AGENT,
+        entity_id="agent-1",
+        metric_values={"csat": 92},
+        validation_status=validation_status,
+        data_quality_status=data_quality_status,
+    )
+
+
 def test_calculation_persists_successful_result_with_lineage(tmp_path):
     services = create_services(tmp_path)
     formula = create_active_kpi(services)
@@ -171,6 +230,59 @@ def test_calculation_generates_success_audit_events(tmp_path):
     assert "FORMULA_SELECTED" in actions
     assert "CALCULATION_COMPLETED" in actions
     assert result.calculation_run_id
+
+
+def test_source_backed_calculation_includes_source_metadata(tmp_path):
+    services = create_services(tmp_path)
+    create_active_kpi(services)
+    services["source_registry_repository"].upsert_entry(
+        context(GovernanceRole.GOVERNANCE_ADMIN),
+        source_registry_entry()
+    )
+    services["source_repository"].save(
+        context(),
+        operational_source()
+    )
+    request = calculation_request()
+    request.source_record_ids = ["source-1"]
+
+    result = services["calculation_service"].calculate_kpi(
+        context(),
+        request
+    )
+
+    assert result.status == KPICalculationStatus.SUCCESS
+    assert result.metadata["source_record_ids"] == ["source-1"]
+    assert result.metadata["source_references"] == ["survey:2026-03"]
+    assert result.metadata["source_types"] == ["survey"]
+    assert result.metadata["source_version"] == ["v1"]
+    assert result.metadata["lineage_id"] == ["lineage-1"]
+    assert result.metadata["source_validation_status"] == ["valid"]
+    assert result.metadata["source_quality_summary"] == {"valid": 1}
+
+
+def test_invalid_source_blocks_calculation_and_result_persistence(tmp_path):
+    services = create_services(tmp_path)
+    create_active_kpi(services)
+    services["source_registry_repository"].upsert_entry(
+        context(GovernanceRole.GOVERNANCE_ADMIN),
+        source_registry_entry()
+    )
+    request = calculation_request()
+    request.source_records = [
+        operational_source(validation_status=SourceValidationStatus.INVALID)
+    ]
+
+    with pytest.raises(ValueError, match="Source validation failed"):
+        services["calculation_service"].calculate_kpi(
+            context(),
+            request
+        )
+
+    assert services["result_repository"].list_results_for_kpi(
+        context(),
+        "csat"
+    ) == []
 
 
 def test_inactive_kpi_is_rejected_and_audited(tmp_path):

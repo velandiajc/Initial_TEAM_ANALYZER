@@ -5,6 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.models.kpi import utc_now
+from app.models.operational_source import OperationalSourceRecord
 
 
 class KPICalculationStatus(Enum):
@@ -50,6 +51,9 @@ class KPICalculationRequest:
     period_end: datetime
     source_data: KPISourceData
     scope: dict[str, Any] = field(default_factory=dict)
+    source_records: list[OperationalSourceRecord] = field(default_factory=list)
+    source_record_ids: list[str] = field(default_factory=list)
+    source_references: list[str] = field(default_factory=list)
     calculation_run_id: str = field(default_factory=lambda: str(uuid4()))
 
     def __post_init__(self) -> None:
