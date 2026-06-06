@@ -8,6 +8,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.tmp_pytest/
 
 # Local data / sensitive files
 Data/

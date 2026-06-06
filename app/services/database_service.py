@@ -172,6 +172,62 @@ class DatabaseService:
                 )
             """)
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS source_registry (
+                    tenant_id TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    source_owner TEXT NOT NULL,
+                    source_steward TEXT NOT NULL,
+                    allowed_entity_scopes_json TEXT NOT NULL DEFAULT '[]',
+                    required_fields_json TEXT NOT NULL DEFAULT '[]',
+                    numeric_fields_json TEXT NOT NULL DEFAULT '[]',
+                    freshness_threshold_hours INTEGER,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_by TEXT,
+                    created_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (tenant_id, source_type)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS operational_sources (
+                    tenant_id TEXT NOT NULL,
+                    source_record_id TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    source_reference TEXT,
+                    source_version TEXT NOT NULL,
+                    lineage_id TEXT NOT NULL,
+                    period_start TEXT,
+                    period_end TEXT,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT,
+                    validation_status TEXT NOT NULL,
+                    data_quality_status TEXT NOT NULL,
+                    metric_values_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (tenant_id, source_record_id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS source_validation_events (
+                    tenant_id TEXT NOT NULL,
+                    validation_event_id TEXT NOT NULL,
+                    source_record_id TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    validation_status TEXT NOT NULL,
+                    data_quality_status TEXT NOT NULL,
+                    quality_issues_json TEXT NOT NULL DEFAULT '[]',
+                    message TEXT,
+                    created_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (tenant_id, validation_event_id)
+                )
+            """)
+
             conn.commit()
 
     def _ensure_column(

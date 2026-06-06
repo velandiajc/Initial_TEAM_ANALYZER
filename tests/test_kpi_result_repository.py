@@ -142,6 +142,17 @@ def result_with_formula(formula_version_id):
     return item
 
 
+def source_backed_result_without_lineage():
+    item = result()
+    item.metadata = {
+        "source_record_ids": ["source-1"],
+        "source_references": ["survey:2026-03"],
+        "source_types": ["survey"],
+        "source_version": ["v1"],
+    }
+    return item
+
+
 def test_result_repository_persists_and_reads_by_tenant(tmp_path):
     repo = create_repo(tmp_path)
 
@@ -209,6 +220,16 @@ def test_result_repository_rejects_nonexistent_formula_version(tmp_path):
         repo.save(
             context(),
             result_with_formula("missing-formula")
+        )
+
+
+def test_result_repository_rejects_source_backed_result_without_lineage(tmp_path):
+    repo = create_repo(tmp_path)
+
+    with pytest.raises(ValueError, match="Source lineage is required"):
+        repo.save(
+            context(),
+            source_backed_result_without_lineage()
         )
 
 

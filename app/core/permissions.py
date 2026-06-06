@@ -21,6 +21,9 @@ class KPIPermission(Enum):
     VIEW_GOVERNANCE = "view_governance"
     CALCULATE_KPI = "calculate_kpi"
     VIEW_KPI_RESULTS = "view_kpi_results"
+    REGISTER_SOURCE_TYPE = "register_source_type"
+    VALIDATE_OPERATIONAL_SOURCE = "validate_operational_source"
+    VIEW_OPERATIONAL_SOURCE = "view_operational_source"
 
 
 class RBACService:
