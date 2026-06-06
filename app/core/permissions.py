@@ -19,6 +19,8 @@ class KPIPermission(Enum):
     APPROVE_FORMULA = "approve_formula"
     CHANGE_LIFECYCLE = "change_lifecycle"
     VIEW_GOVERNANCE = "view_governance"
+    CALCULATE_KPI = "calculate_kpi"
+    VIEW_KPI_RESULTS = "view_kpi_results"
 
 
 class RBACService:
@@ -34,16 +36,20 @@ class RBACService:
             KPIPermission.SUBMIT_FORMULA.value,
             KPIPermission.CHANGE_LIFECYCLE.value,
             KPIPermission.VIEW_GOVERNANCE.value,
+            KPIPermission.CALCULATE_KPI.value,
+            KPIPermission.VIEW_KPI_RESULTS.value,
         },
         GovernanceRole.KPI_STEWARD.value: {
             KPIPermission.WRITE_THRESHOLD.value,
             KPIPermission.SUBMIT_FORMULA.value,
             KPIPermission.VIEW_GOVERNANCE.value,
+            KPIPermission.VIEW_KPI_RESULTS.value,
         },
         GovernanceRole.KPI_APPROVER.value: {
             KPIPermission.APPROVE_FORMULA.value,
             KPIPermission.CHANGE_LIFECYCLE.value,
             KPIPermission.VIEW_GOVERNANCE.value,
+            KPIPermission.VIEW_KPI_RESULTS.value,
         },
     }
 

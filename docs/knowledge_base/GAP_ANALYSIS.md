@@ -12,7 +12,9 @@ This gap analysis compares the repository implementation against:
 
 The repository has a strong foundation for survey ingestion, CSAT analysis, VOC sampling, agent discovery, and Markdown reporting. The biggest gap is that several mission areas exist as prompts, framework stubs, generic primitives, or standalone scripts rather than integrated product capabilities.
 
-Sprint 1 adds a KPI governance foundation for metadata controls, ownership, stewardship, formula version approval, tenant-scoped persistence, RBAC, and audit events. This closes the governance foundation gap only; KPI calculations, KPI results, dashboards, risk engines, and coaching engines remain future work.
+Sprint 1 adds a KPI governance foundation for metadata controls, ownership, stewardship, formula version approval, tenant-scoped persistence, RBAC, and audit events.
+
+Sprint 2 adds a safe KPI calculation foundation: approved formula resolution, effective dating, formula lineage, controlled handler execution, traceable KPI result persistence, calculation permissions, tenant enforcement, and calculation audit events. Dashboards, analytics, risk engines, coaching engines, and AI remain future work.
 
 ## Mission Alignment Summary
 
@@ -65,13 +67,16 @@ Implemented:
 - `Agent` dataclass.
 - `Survey` dataclass.
 - KPI governance dataclasses for definitions, domains, lifecycle, thresholds, and formula versions.
+- KPI calculation dataclasses for source data, calculation requests, handler results, and traceable KPI results.
 - `TenantContext` for tenant-scoped governance access and user attribution.
 - `AuditEvent` for governance auditability.
 - SQLite `agents`, `agent_aliases`, and `surveys` tables.
 - SQLite `kpi_definitions`, `kpi_thresholds`, `formula_versions`, and `kpi_audit_events` tables.
+- SQLite `kpi_calculation_results` table.
 - SQLite agent repository.
 - SQLite survey repository.
 - Tenant-scoped SQLite KPI definition and audit repositories.
+- Tenant-scoped SQLite KPI result repository with explicit result-view permission checks.
 - Agent alias lookup by ID, employee ID, name, nice name, CXone name, email, and alias.
 
 ### KPI Governance Foundation
@@ -88,10 +93,26 @@ Implemented:
 - Tenant-scoped repository access for KPI definitions, thresholds, formula versions, and audit events.
 - Governance audit events for registry actions.
 
+### Unified KPI Engine Foundation
+
+Implemented:
+
+- Formula effective dating through `effective_from` and `effective_to`.
+- Formula lineage through `supersedes_formula_version_id`, `is_current`, and historical formula retrieval.
+- Approved formula resolution through `FormulaVersionService`.
+- Missing approved formula and overlapping approved formula rejection.
+- Approved formula immutability for protected formula content.
+- Controlled formula handler lookup through `FormulaHandlerRegistry`.
+- Minimal KPI calculation orchestration through `KPICalculationService`.
+- KPI result persistence through `SQLiteKPICalculationResultRepository`.
+- Calculation audit events for requested, started, formula selected, completed, failed/rejected, and result viewed.
+- New RBAC permissions for `calculate_kpi` and `view_kpi_results`.
+- Tenant checks across KPI definition, formula, source data, result persistence, result retrieval, and audit boundaries.
+
 Remaining gap:
 
-- KPI formulas are not executed.
-- KPI results, dashboards, analytics, lineage, snapshots, scheduled jobs, risk scoring, and coaching automation are still missing by Sprint 1 design.
+- KPI execution is limited to controlled registered handlers.
+- Generic formula DSLs, expression parsing, dynamic formula execution, dashboards, analytics, snapshots, scheduled jobs, risk scoring, coaching automation, and AI remain out of scope.
 
 ### Survey Normalization Tests
 
