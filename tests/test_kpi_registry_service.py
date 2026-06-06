@@ -1,9 +1,12 @@
+from datetime import datetime
+
 import pytest
 
 from app.core.permissions import GovernanceRole
 from app.core.tenant_context import TenantContext
 from app.models.kpi import FormulaStatus, KPIDomain, KPILifecycle
 from app.services.database_service import DatabaseService
+from app.services.formula_version_service import FormulaConflictError
 from app.services.kpi_audit_service import KPIAuditService
 from app.services.kpi_registry_service import KPIRegistryService
 from app.services.sqlite_kpi_audit_repository import SQLiteKPIAuditRepository
@@ -121,6 +124,84 @@ def test_registry_formula_requires_separate_approver(tmp_path):
 
     assert approved.status == FormulaStatus.APPROVED
     assert approved.approved_by == "approver-1"
+
+
+def test_registry_rejects_overlapping_approved_formula_periods(tmp_path):
+    service = create_service(tmp_path)
+    service.register_kpi(
+        owner_context(),
+        kpi_id="csat",
+        name="CSAT",
+        domain="customer_experience",
+        owner_user_id="owner-1",
+        steward_user_id="steward-1",
+    )
+    first = service.submit_formula_version(
+        owner_context(),
+        kpi_id="csat",
+        version="1.0",
+        expression="count_records",
+        effective_from=datetime(2026, 1, 1),
+        effective_to=datetime(2026, 6, 30),
+    )
+    overlapping = service.submit_formula_version(
+        owner_context(),
+        kpi_id="csat",
+        version="2.0",
+        expression="count_records",
+        effective_from=datetime(2026, 6, 1),
+        effective_to=datetime(2026, 12, 31),
+    )
+
+    service.approve_formula_version(
+        approver_context(),
+        first.formula_version_id
+    )
+
+    with pytest.raises(FormulaConflictError, match="overlaps"):
+        service.approve_formula_version(
+            approver_context(),
+            overlapping.formula_version_id
+        )
+
+
+def test_registry_allows_non_overlapping_approved_formula_periods(tmp_path):
+    service = create_service(tmp_path)
+    service.register_kpi(
+        owner_context(),
+        kpi_id="csat",
+        name="CSAT",
+        domain="customer_experience",
+        owner_user_id="owner-1",
+        steward_user_id="steward-1",
+    )
+    first = service.submit_formula_version(
+        owner_context(),
+        kpi_id="csat",
+        version="1.0",
+        expression="count_records",
+        effective_from=datetime(2026, 1, 1),
+        effective_to=datetime(2026, 6, 30),
+    )
+    second = service.submit_formula_version(
+        owner_context(),
+        kpi_id="csat",
+        version="2.0",
+        expression="count_records",
+        effective_from=datetime(2026, 7, 1),
+        effective_to=datetime(2026, 12, 31),
+    )
+
+    service.approve_formula_version(
+        approver_context(),
+        first.formula_version_id
+    )
+    approved = service.approve_formula_version(
+        approver_context(),
+        second.formula_version_id
+    )
+
+    assert approved.status == FormulaStatus.APPROVED
 
 
 def test_registry_lifecycle_change_requires_approver_role(tmp_path):

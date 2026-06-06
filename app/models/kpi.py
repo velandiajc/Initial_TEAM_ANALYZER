@@ -101,6 +101,17 @@ class KPIThreshold:
 
 @dataclass
 class FormulaVersion:
+    IMMUTABLE_AFTER_APPROVAL = {
+        "tenant_id",
+        "kpi_id",
+        "version",
+        "expression",
+        "created_by",
+        "effective_from",
+        "effective_to",
+        "supersedes_formula_version_id",
+    }
+
     formula_version_id: str
     tenant_id: str
     kpi_id: str
@@ -111,7 +122,29 @@ class FormulaVersion:
     approved_by: str | None = None
     created_at: datetime = field(default_factory=utc_now)
     approved_at: datetime | None = None
+    effective_from: datetime | None = None
+    effective_to: datetime | None = None
+    supersedes_formula_version_id: str | None = None
+    is_current: bool = True
     notes: str = ""
+    _approved_locked: bool = field(
+        default=False,
+        init=False,
+        repr=False
+    )
+
+    def __setattr__(self, name, value) -> None:
+        if (
+            getattr(self, "_approved_locked", False)
+            and name in self.IMMUTABLE_AFTER_APPROVAL
+        ):
+            raise AttributeError("Approved formulas are immutable.")
+
+        object.__setattr__(
+            self,
+            name,
+            value
+        )
 
     def __post_init__(self) -> None:
         _require_text(self.formula_version_id, "formula_version_id")
@@ -121,6 +154,14 @@ class FormulaVersion:
         _require_text(self.expression, "expression")
         _require_text(self.created_by, "created_by")
         self.status = FormulaStatus.from_value(self.status)
+        self._validate_effective_period()
+
+        if self.is_approved():
+            object.__setattr__(
+                self,
+                "_approved_locked",
+                True
+            )
 
     def approve(
         self,
@@ -132,12 +173,74 @@ class FormulaVersion:
         if approver_user_id == self.created_by:
             raise PermissionError("Creator cannot approve own formula.")
 
-        self.status = FormulaStatus.APPROVED
-        self.approved_by = approver_user_id
-        self.approved_at = approved_at or utc_now()
+        object.__setattr__(
+            self,
+            "status",
+            FormulaStatus.APPROVED
+        )
+        object.__setattr__(
+            self,
+            "approved_by",
+            approver_user_id
+        )
+        object.__setattr__(
+            self,
+            "approved_at",
+            approved_at or utc_now()
+        )
+        object.__setattr__(
+            self,
+            "_approved_locked",
+            True
+        )
 
     def is_approved(self) -> bool:
         return self.status == FormulaStatus.APPROVED
+
+    @property
+    def approval_date(self) -> datetime | None:
+        return self.approved_at
+
+    def covers_period(
+        self,
+        period_start: datetime,
+        period_end: datetime
+    ) -> bool:
+        self._validate_effective_period()
+        period_start = _comparable_datetime(period_start)
+        period_end = _comparable_datetime(period_end)
+        effective_from = _comparable_datetime(self.effective_from)
+        effective_to = _comparable_datetime(self.effective_to)
+
+        if effective_from and effective_from > period_start:
+            return False
+
+        if effective_to and effective_to < period_end:
+            return False
+
+        return True
+
+    def overlaps_effective_period(
+        self,
+        other: "FormulaVersion"
+    ) -> bool:
+        self_start = _comparable_datetime(self.effective_from) or datetime.min
+        self_end = _comparable_datetime(self.effective_to) or datetime.max
+        other_start = _comparable_datetime(other.effective_from) or datetime.min
+        other_end = _comparable_datetime(other.effective_to) or datetime.max
+
+        return self_start <= other_end and other_start <= self_end
+
+    def _validate_effective_period(self) -> None:
+        if (
+            self.effective_from
+            and self.effective_to
+            and _comparable_datetime(self.effective_from)
+            > _comparable_datetime(self.effective_to)
+        ):
+            raise ValueError(
+                "effective_from must be before or equal to effective_to."
+            )
 
 
 @dataclass
@@ -194,3 +297,13 @@ class KPIDefinition:
 def _require_text(value: str, field_name: str) -> None:
     if not str(value).strip():
         raise ValueError(f"{field_name} is required.")
+
+
+def _comparable_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+
+    if value.tzinfo is None:
+        return value
+
+    return value.astimezone(timezone.utc).replace(tzinfo=None)

@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import uuid4
 
 from app.core.permissions import KPIPermission, RBACService
@@ -10,6 +11,7 @@ from app.models.kpi import (
     KPILifecycle,
     KPIThreshold,
 )
+from app.services.formula_version_service import FormulaVersionService
 
 
 class KPIRegistryService:
@@ -17,11 +19,16 @@ class KPIRegistryService:
         self,
         definition_repository,
         audit_service,
-        rbac_service: RBACService | None = None
+        rbac_service: RBACService | None = None,
+        formula_version_service: FormulaVersionService | None = None
     ):
         self.definition_repository = definition_repository
         self.audit_service = audit_service
         self.rbac_service = rbac_service or RBACService()
+        self.formula_version_service = (
+            formula_version_service
+            or FormulaVersionService(definition_repository)
+        )
 
     def register_kpi(
         self,
@@ -158,7 +165,11 @@ class KPIRegistryService:
         version: str,
         expression: str,
         notes: str = "",
-        formula_version_id: str | None = None
+        formula_version_id: str | None = None,
+        effective_from: datetime | None = None,
+        effective_to: datetime | None = None,
+        supersedes_formula_version_id: str | None = None,
+        is_current: bool = True
     ) -> FormulaVersion:
         context = require_tenant_context(context)
         self.rbac_service.require_permission(
@@ -174,6 +185,10 @@ class KPIRegistryService:
             expression=expression,
             created_by=context.user_id,
             status=FormulaStatus.PENDING_APPROVAL,
+            effective_from=effective_from,
+            effective_to=effective_to,
+            supersedes_formula_version_id=supersedes_formula_version_id,
+            is_current=is_current,
             notes=notes,
         )
 
@@ -219,6 +234,10 @@ class KPIRegistryService:
             formula_version
         )
         formula_version.approve(context.user_id)
+        self.formula_version_service.validate_no_effective_period_conflict(
+            context,
+            formula_version
+        )
         self.definition_repository.upsert_formula_version(
             context,
             formula_version
@@ -318,7 +337,11 @@ class FormulaGovernanceService:
         version: str,
         expression: str,
         notes: str = "",
-        formula_version_id: str | None = None
+        formula_version_id: str | None = None,
+        effective_from: datetime | None = None,
+        effective_to: datetime | None = None,
+        supersedes_formula_version_id: str | None = None,
+        is_current: bool = True
     ) -> FormulaVersion:
         return self.registry_service.submit_formula_version(
             context,
@@ -327,6 +350,10 @@ class FormulaGovernanceService:
             expression=expression,
             notes=notes,
             formula_version_id=formula_version_id,
+            effective_from=effective_from,
+            effective_to=effective_to,
+            supersedes_formula_version_id=supersedes_formula_version_id,
+            is_current=is_current,
         )
 
     def approve_formula_version(
