@@ -12,6 +12,8 @@ This gap analysis compares the repository implementation against:
 
 The repository has a strong foundation for survey ingestion, CSAT analysis, VOC sampling, agent discovery, and Markdown reporting. The biggest gap is that several mission areas exist as prompts, framework stubs, generic primitives, or standalone scripts rather than integrated product capabilities.
 
+Sprint 1 adds a KPI governance foundation for metadata controls, ownership, stewardship, formula version approval, tenant-scoped persistence, RBAC, and audit events. This closes the governance foundation gap only; KPI calculations, KPI results, dashboards, risk engines, and coaching engines remain future work.
+
 ## Mission Alignment Summary
 
 `AGENTS.md` defines TEAM_ANALYZER as a platform that transforms contact center operational data into:
@@ -62,10 +64,34 @@ Implemented:
 
 - `Agent` dataclass.
 - `Survey` dataclass.
+- KPI governance dataclasses for definitions, domains, lifecycle, thresholds, and formula versions.
+- `TenantContext` for tenant-scoped governance access and user attribution.
+- `AuditEvent` for governance auditability.
 - SQLite `agents`, `agent_aliases`, and `surveys` tables.
+- SQLite `kpi_definitions`, `kpi_thresholds`, `formula_versions`, and `kpi_audit_events` tables.
 - SQLite agent repository.
 - SQLite survey repository.
+- Tenant-scoped SQLite KPI definition and audit repositories.
 - Agent alias lookup by ID, employee ID, name, nice name, CXone name, email, and alias.
+
+### KPI Governance Foundation
+
+Implemented:
+
+- KPI domain classification through `KPIDomain`.
+- KPI lifecycle states through `KPILifecycle`.
+- Required KPI owner and steward fields.
+- Governance roles for KPI owner, KPI steward, KPI approver, and governance admin.
+- Permission checks through `RBACService`.
+- Formula submission and approval metadata through `FormulaVersion`.
+- Enforcement that formula creators cannot approve their own formula versions.
+- Tenant-scoped repository access for KPI definitions, thresholds, formula versions, and audit events.
+- Governance audit events for registry actions.
+
+Remaining gap:
+
+- KPI formulas are not executed.
+- KPI results, dashboards, analytics, lineage, snapshots, scheduled jobs, risk scoring, and coaching automation are still missing by Sprint 1 design.
 
 ### Survey Normalization Tests
 
