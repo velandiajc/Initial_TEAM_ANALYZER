@@ -16,6 +16,7 @@ Data/
 Data/raw/
 data/raw/evidence_samples/
 data/processed/evidence/
+data/processed/evidence/review/
 Reports/
 Reports/*.db
 Reports/*.csv

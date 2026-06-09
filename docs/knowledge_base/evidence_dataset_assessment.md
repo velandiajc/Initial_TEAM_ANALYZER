@@ -135,6 +135,29 @@ The companion Markdown files are generated under:
 Each Markdown file repeats manifest metadata only and must not contain raw PDF
 text, call audio text, transcripts, QA comments, or customer statements.
 
+## Evidence Dataset Review Utility
+
+`Scripts/review_evidence_manifest.py` reads the generated manifest at
+`data/processed/evidence/manifest/qa_evidence_manifest.csv` and creates
+local-only review outputs under `data/processed/evidence/review/`.
+
+Generated outputs:
+
+- `evidence_dataset_summary.md`
+- `evidence_quality_report.md`
+- `evidence_link_candidates.csv`
+
+The review utility calculates inventory counts, agent coverage, period coverage,
+data quality gaps, duplicate filenames, and simple audit-to-recording link
+candidates. Matching is deterministic and transparent: it uses normalized agent
+names, month alignment, week numbers where available, and recording dates that
+fall into likely audit week ranges. It does not use AI, fuzzy matching
+dependencies, PDF extraction, audio transcription, speech analytics, or raw
+content processing.
+
+Review outputs are also excluded from Git because filenames, timestamps, and
+coverage gaps may still reveal restricted operational information.
+
 ## Out Of Scope
 
 This workflow does not:
