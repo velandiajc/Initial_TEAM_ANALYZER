@@ -31,10 +31,18 @@ def test_governance_roles_grant_expected_permissions():
     assert rbac.can(owner_context, KPIPermission.SUBMIT_FORMULA)
     assert rbac.can(owner_context, KPIPermission.CALCULATE_KPI)
     assert rbac.can(owner_context, KPIPermission.VIEW_KPI_RESULTS)
+    assert rbac.can(owner_context, KPIPermission.REGISTER_RISK_DEFINITION)
+    assert rbac.can(owner_context, KPIPermission.SUBMIT_RISK_RULE)
+    assert rbac.can(owner_context, KPIPermission.ASSESS_RISK)
     assert not rbac.can(owner_context, KPIPermission.APPROVE_FORMULA)
+    assert not rbac.can(owner_context, KPIPermission.APPROVE_RISK_RULE)
     assert rbac.can(approver_context, KPIPermission.APPROVE_FORMULA)
     assert rbac.can(approver_context, KPIPermission.VIEW_KPI_RESULTS)
+    assert rbac.can(approver_context, KPIPermission.APPROVE_RISK_RULE)
+    assert rbac.can(approver_context, KPIPermission.ACTIVATE_RISK_RULE)
+    assert rbac.can(approver_context, KPIPermission.VIEW_RISK_RESULTS)
     assert not rbac.can(approver_context, KPIPermission.CALCULATE_KPI)
+    assert not rbac.can(approver_context, KPIPermission.ASSESS_RISK)
 
 
 def test_creator_cannot_approve_own_formula_even_with_approver_role():
