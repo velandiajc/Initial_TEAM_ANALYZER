@@ -228,6 +228,73 @@ class DatabaseService:
                 )
             """)
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS risk_definitions (
+                    tenant_id TEXT NOT NULL,
+                    risk_definition_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    category TEXT NOT NULL,
+                    lifecycle TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    steward_user_id TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (tenant_id, risk_definition_id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS risk_rule_versions (
+                    tenant_id TEXT NOT NULL,
+                    rule_version_id TEXT NOT NULL,
+                    risk_definition_id TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    handler_key TEXT NOT NULL,
+                    parameters_json TEXT NOT NULL DEFAULT '{}',
+                    status TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    approved_by TEXT,
+                    created_at TEXT NOT NULL,
+                    approved_at TEXT,
+                    effective_from TEXT,
+                    effective_to TEXT,
+                    supersedes_rule_version_id TEXT,
+                    is_active INTEGER NOT NULL DEFAULT 0,
+                    notes TEXT,
+                    PRIMARY KEY (tenant_id, rule_version_id),
+                    FOREIGN KEY(tenant_id, risk_definition_id)
+                        REFERENCES risk_definitions(tenant_id, risk_definition_id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS risk_assessment_results (
+                    tenant_id TEXT NOT NULL,
+                    result_id TEXT NOT NULL,
+                    risk_definition_id TEXT NOT NULL,
+                    rule_version_id TEXT NOT NULL,
+                    rule_version_number TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    period_start TEXT NOT NULL,
+                    period_end TEXT NOT NULL,
+                    risk_level TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL DEFAULT '{}',
+                    source_reference TEXT,
+                    assessment_run_id TEXT NOT NULL,
+                    assessed_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (tenant_id, result_id),
+                    FOREIGN KEY(tenant_id, risk_definition_id)
+                        REFERENCES risk_definitions(tenant_id, risk_definition_id)
+                )
+            """)
+
             conn.commit()
 
     def _ensure_column(
