@@ -281,12 +281,19 @@ class DatabaseService:
                     entity_id TEXT NOT NULL,
                     period_start TEXT NOT NULL,
                     period_end TEXT NOT NULL,
+                    risk_score REAL,
                     risk_level TEXT NOT NULL,
                     status TEXT NOT NULL,
                     reason TEXT NOT NULL,
                     evidence_json TEXT NOT NULL DEFAULT '{}',
                     source_reference TEXT,
                     assessment_run_id TEXT NOT NULL,
+                    risk_definition_version TEXT,
+                    kpi_result_ids_json TEXT NOT NULL DEFAULT '[]',
+                    formula_versions_json TEXT NOT NULL DEFAULT '[]',
+                    source_record_ids_json TEXT NOT NULL DEFAULT '[]',
+                    source_validation_lineage_json TEXT NOT NULL DEFAULT '{}',
+                    lineage_id TEXT,
                     assessed_at TEXT NOT NULL,
                     metadata_json TEXT NOT NULL DEFAULT '{}',
                     PRIMARY KEY (tenant_id, result_id),
@@ -294,6 +301,48 @@ class DatabaseService:
                         REFERENCES risk_definitions(tenant_id, risk_definition_id)
                 )
             """)
+            self._ensure_column(
+                cursor,
+                "risk_assessment_results",
+                "risk_score",
+                "REAL"
+            )
+            self._ensure_column(
+                cursor,
+                "risk_assessment_results",
+                "risk_definition_version",
+                "TEXT"
+            )
+            self._ensure_column(
+                cursor,
+                "risk_assessment_results",
+                "kpi_result_ids_json",
+                "TEXT NOT NULL DEFAULT '[]'"
+            )
+            self._ensure_column(
+                cursor,
+                "risk_assessment_results",
+                "formula_versions_json",
+                "TEXT NOT NULL DEFAULT '[]'"
+            )
+            self._ensure_column(
+                cursor,
+                "risk_assessment_results",
+                "source_record_ids_json",
+                "TEXT NOT NULL DEFAULT '[]'"
+            )
+            self._ensure_column(
+                cursor,
+                "risk_assessment_results",
+                "source_validation_lineage_json",
+                "TEXT NOT NULL DEFAULT '{}'"
+            )
+            self._ensure_column(
+                cursor,
+                "risk_assessment_results",
+                "lineage_id",
+                "TEXT"
+            )
 
             conn.commit()
 
