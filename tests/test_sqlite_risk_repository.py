@@ -57,7 +57,7 @@ def approved_rule():
             "risk_level": "critical",
         },
         created_by="owner-1",
-        status=RiskRuleStatus.APPROVED,
+        status=RiskRuleStatus.ACTIVE,
         approved_by="approver-1",
         approved_at=datetime(2026, 1, 1),
         effective_from=datetime(2026, 1, 1),
@@ -123,6 +123,7 @@ def test_risk_result_repository_is_tenant_scoped(tmp_path):
         entity_id="agent-1",
         period_start=datetime(2026, 3, 1),
         period_end=datetime(2026, 3, 31),
+        risk_score=100.0,
         risk_level=RiskLevel.CRITICAL,
         status=RiskAssessmentStatus.SUCCESS,
         reason="Average CSAT below governed threshold.",
@@ -132,11 +133,31 @@ def test_risk_result_repository_is_tenant_scoped(tmp_path):
         },
         source_reference="survey:unit-test",
         assessment_run_id="run-1",
+        risk_definition_version="1.0",
+        kpi_result_ids=["kpi-result-1"],
+        formula_versions=[{
+            "kpi_id": "csat",
+            "formula_version_id": "formula-1",
+            "formula_version_number": "1.0",
+        }],
+        source_record_ids=["source-1"],
+        source_validation_lineage={
+            "source_validation_status": ["valid"],
+            "data_quality_status": ["valid"],
+        },
+        lineage_id="lineage-1",
     )
 
     repo.save_result(context(), result)
+    persisted = repo.get_result(context("tenant-1"), result.result_id)
 
-    assert repo.get_result(context("tenant-1"), result.result_id) is not None
+    assert persisted is not None
+    assert persisted.risk_score == 100.0
+    assert persisted.kpi_result_ids == ["kpi-result-1"]
+    assert persisted.formula_versions[0]["formula_version_id"] == "formula-1"
+    assert persisted.source_record_ids == ["source-1"]
+    assert persisted.source_validation_lineage["source_validation_status"] == ["valid"]
+    assert persisted.lineage_id == "lineage-1"
     assert repo.get_result(context("tenant-2"), result.result_id) is None
     assert repo.list_results_for_definition(
         context("tenant-2"),
@@ -155,3 +176,37 @@ def test_lifecycle_updates_are_persisted(tmp_path):
     )
 
     assert updated.lifecycle == RiskDefinitionLifecycle.ACTIVE
+
+
+def test_risk_result_repository_rejects_missing_required_lineage(tmp_path):
+    repo = repository(tmp_path)
+    repo.upsert_definition(context(), definition())
+
+    with pytest.raises(ValueError, match="KPI result lineage"):
+        RiskAssessmentResult(
+            tenant_id="tenant-1",
+            risk_definition_id="csat-critical-risk",
+            rule_version_id="rule-1",
+            rule_version_number="1.0",
+            entity_type="agent",
+            entity_id="agent-1",
+            period_start=datetime(2026, 3, 1),
+            period_end=datetime(2026, 3, 31),
+            risk_score=100.0,
+            risk_level=RiskLevel.CRITICAL,
+            status=RiskAssessmentStatus.SUCCESS,
+            reason="Average CSAT below governed threshold.",
+            evidence={},
+            source_reference="survey:unit-test",
+            assessment_run_id="run-1",
+            risk_definition_version="1.0",
+            kpi_result_ids=[],
+            formula_versions=[{
+                "kpi_id": "csat",
+                "formula_version_id": "formula-1",
+                "formula_version_number": "1.0",
+            }],
+            source_record_ids=[],
+            source_validation_lineage={},
+            lineage_id="lineage-1",
+        )
