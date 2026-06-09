@@ -1,0 +1,14 @@
+{
+  "evidence_pack_id": "",
+  "tenant_id": "",
+  "agent_id": "",
+  "created_at": "",
+  "review_status": "SUGGESTED",
+  "sensitivity": "RESTRICTED",
+  "human_review_required": true,
+  "evidence_artifacts": [],
+  "supporting_kpis": [],
+  "supporting_risks": [],
+  "root_cause_category": "UNKNOWN",
+  "notes": ""
+}

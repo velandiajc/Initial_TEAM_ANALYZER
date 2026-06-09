@@ -9,6 +9,7 @@ __pycache__/
 *.pyo
 *.pyd
 .tmp_pytest/
+.tmp_pytest_evidence_foundation/
 .pytest_cache/
 
 # Local data / sensitive files
@@ -35,6 +36,8 @@ Reports/*demo*.db
 *.wav
 *.pdf
 *.json
+!templates/
+!templates/coaching_evidence_pack_template.json
 
 # Runtime / tool workspaces
 .codex/
