@@ -5,11 +5,12 @@ from typing import Any
 from uuid import uuid4
 
 from app.models.kpi import utc_now
+from app.models.kpi_calculation import KPICalculationResult
 
 
 class RiskLevel(Enum):
     LOW = "low"
-    MODERATE = "moderate"
+    MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
@@ -20,6 +21,9 @@ class RiskLevel(Enum):
 
         normalized = str(value).strip().lower().replace(" ", "_")
 
+        if normalized == "moderate":
+            return cls.MEDIUM
+
         for level in cls:
             if level.value == normalized or level.name.lower() == normalized:
                 return level
@@ -29,11 +33,11 @@ class RiskLevel(Enum):
 
 class RiskDefinitionLifecycle(Enum):
     DRAFT = "draft"
-    PENDING_APPROVAL = "pending_approval"
+    REVIEW = "review"
     APPROVED = "approved"
     ACTIVE = "active"
+    DEPRECATED = "deprecated"
     RETIRED = "retired"
-    ARCHIVED = "archived"
 
     @classmethod
     def from_value(
@@ -44,6 +48,11 @@ class RiskDefinitionLifecycle(Enum):
             return value
 
         normalized = str(value).strip().lower().replace(" ", "_")
+        legacy_values = {
+            "pending_approval": "review",
+            "archived": "deprecated",
+        }
+        normalized = legacy_values.get(normalized, normalized)
 
         for lifecycle in cls:
             if lifecycle.value == normalized or lifecycle.name.lower() == normalized:
@@ -53,9 +62,11 @@ class RiskDefinitionLifecycle(Enum):
 
 
 class RiskRuleStatus(Enum):
-    PENDING_APPROVAL = "pending_approval"
+    DRAFT = "draft"
+    REVIEW = "review"
     APPROVED = "approved"
-    REJECTED = "rejected"
+    ACTIVE = "active"
+    DEPRECATED = "deprecated"
     RETIRED = "retired"
 
     @classmethod
@@ -64,6 +75,12 @@ class RiskRuleStatus(Enum):
             return value
 
         normalized = str(value).strip().lower().replace(" ", "_")
+        legacy_values = {
+            "pending_approval": "review",
+            "rejected": "deprecated",
+            "archived": "deprecated",
+        }
+        normalized = legacy_values.get(normalized, normalized)
 
         for status in cls:
             if status.value == normalized or status.name.lower() == normalized:
@@ -151,7 +168,7 @@ class RiskRuleVersion:
     handler_key: str
     parameters: dict[str, Any]
     created_by: str
-    status: RiskRuleStatus = RiskRuleStatus.PENDING_APPROVAL
+    status: RiskRuleStatus = RiskRuleStatus.REVIEW
     approved_by: str | None = None
     created_at: datetime = field(default_factory=utc_now)
     approved_at: datetime | None = None
@@ -203,16 +220,20 @@ class RiskRuleVersion:
         if not self.is_approved():
             raise ValueError("Only approved risk rules can be activated.")
 
+        object.__setattr__(self, "status", RiskRuleStatus.ACTIVE)
         object.__setattr__(self, "is_active", True)
 
     def deactivate(self) -> None:
         object.__setattr__(self, "is_active", False)
 
     def is_approved(self) -> bool:
-        return self.status == RiskRuleStatus.APPROVED
+        return self.status in {
+            RiskRuleStatus.APPROVED,
+            RiskRuleStatus.ACTIVE,
+        }
 
     def is_approved_active(self) -> bool:
-        return self.is_approved() and self.is_active
+        return self.status == RiskRuleStatus.ACTIVE and self.is_active
 
     def covers_period(
         self,
@@ -263,7 +284,9 @@ class RiskAssessmentRequest:
     period_end: datetime
     entity_type: str
     entity_id: str
-    metric_values: dict[str, float]
+    kpi_result_ids: list[str] = field(default_factory=list)
+    kpi_results: list[KPICalculationResult] = field(default_factory=list)
+    metric_values: dict[str, float] = field(default_factory=dict)
     source_reference: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
     assessment_run_id: str = field(default_factory=lambda: str(uuid4()))
@@ -281,12 +304,14 @@ class RiskAssessmentRequest:
 @dataclass
 class RiskRuleEvaluation:
     risk_level: RiskLevel
+    risk_score: float
     reason: str
     triggered: bool = True
     evidence: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.risk_level = RiskLevel.from_value(self.risk_level)
+        self.risk_score = float(self.risk_score)
         _require_text(self.reason, "reason")
 
 
@@ -300,12 +325,19 @@ class RiskAssessmentResult:
     entity_id: str
     period_start: datetime
     period_end: datetime
+    risk_score: float
     risk_level: RiskLevel
     status: RiskAssessmentStatus
     reason: str
     evidence: dict[str, Any]
     source_reference: str
     assessment_run_id: str
+    risk_definition_version: str
+    kpi_result_ids: list[str]
+    formula_versions: list[dict[str, str]]
+    source_record_ids: list[str]
+    source_validation_lineage: dict[str, Any]
+    lineage_id: str
     result_id: str = field(default_factory=lambda: str(uuid4()))
     assessed_at: datetime = field(default_factory=utc_now)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -320,8 +352,17 @@ class RiskAssessmentResult:
         _require_text(self.entity_id, "entity_id")
         _require_text(self.reason, "reason")
         _require_text(self.assessment_run_id, "assessment_run_id")
+        _require_text(self.risk_definition_version, "risk_definition_version")
+        _require_text(self.lineage_id, "lineage_id")
         self.risk_level = RiskLevel.from_value(self.risk_level)
         self.status = RiskAssessmentStatus.from_value(self.status)
+        self.risk_score = float(self.risk_score)
+
+        if not self.kpi_result_ids:
+            raise ValueError("RiskAssessmentResult requires KPI result lineage.")
+
+        if not self.formula_versions:
+            raise ValueError("RiskAssessmentResult requires formula lineage.")
 
         if self.period_start > self.period_end:
             raise ValueError("period_start must be before or equal to period_end.")

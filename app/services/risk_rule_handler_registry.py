@@ -107,6 +107,11 @@ class ThresholdRiskRuleHandler:
 
         return RiskRuleEvaluation(
             risk_level=risk_level if triggered else default_level,
+            risk_score=self._score_for_level(
+                risk_level if triggered else default_level,
+                parameters,
+                triggered
+            ),
             reason=reason if triggered else "No governed risk threshold matched.",
             triggered=triggered,
             evidence={
@@ -152,6 +157,24 @@ class ThresholdRiskRuleHandler:
             return actual_value != threshold_value
 
         return False
+
+    def _score_for_level(
+        self,
+        risk_level: RiskLevel,
+        parameters: dict,
+        triggered: bool
+    ) -> float:
+        explicit_key = "risk_score" if triggered else "default_risk_score"
+
+        if explicit_key in parameters:
+            return float(parameters[explicit_key])
+
+        return {
+            RiskLevel.LOW: 25.0,
+            RiskLevel.MEDIUM: 50.0,
+            RiskLevel.HIGH: 75.0,
+            RiskLevel.CRITICAL: 100.0,
+        }[risk_level]
 
 
 def _require_parameter(parameters: dict, key: str) -> str:
