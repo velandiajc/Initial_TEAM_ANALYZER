@@ -2,98 +2,141 @@
 
 ## Purpose
 
-Sprint 4 adds a governed risk framework foundation for TEAM_ANALYZER. It creates tenant-scoped risk definitions, rule versions, deterministic rule execution, traceable risk assessment results, RBAC enforcement, and audit events.
+Sprint 4 adds a governed risk framework foundation for TEAM_ANALYZER. It creates tenant-scoped risk definitions, versioned risk rules, deterministic risk evaluation, numeric risk scoring, risk classification, traceable risk results, RBAC enforcement, and audit events.
 
-This foundation is intentionally limited to rule governance and assessment infrastructure. It does not add dashboards, coaching, recommendations, AI, predictive scoring, schedulers, queues, microservices, dynamic execution, expression parsing, or DSLs.
+This foundation remains inside the existing modular monolith. It does not add dashboards, UI, CLI commands, coaching workflows, recommendations, AI, predictive models, schedulers, queues, background jobs, microservices, dynamic rule execution, expression parsers, or DSLs.
 
-## Runtime Boundaries
+## Approved Risk Chain
 
-- Risk logic remains inside the existing modular monolith.
-- Risk definitions are tenant-scoped business objects.
-- Risk rules are versioned and require approval by someone other than the creator.
-- Rule execution is allowed only when the risk definition is active and exactly one approved active rule covers the assessment period.
-- Rule behavior is selected through a registered Python handler key.
-- The framework does not use `eval()`, `exec()`, `compile()`, expression parsing, runtime code generation, or arbitrary DSL execution.
+Risk evaluation follows the approved chain:
 
-## Governance Objects
+1. Trusted KPI Results
+2. Risk Evaluation
+3. Risk Classification
+4. Risk Scoring
+5. Risk Traceability
 
-Risk definitions capture:
+Risk evaluation consumes governed KPI Results. Raw caller-supplied `metric_values` are not accepted as trusted risk input. Metric values may exist inside the service only after they have been resolved from tenant-scoped KPI calculation results.
 
-- Tenant
-- Risk definition ID
-- Name and category
-- Owner and steward
-- Lifecycle
-- Metadata
+## KPI Result Boundary
 
-Risk rule versions capture:
+Risk evaluation requests must reference governed KPI Result IDs or pass governed KPI Result objects for validation. The assessment service validates:
 
-- Tenant
-- Risk definition ID
-- Version number
-- Registered handler key
-- Structured parameters
-- Approval status
-- Approval metadata
-- Active flag
-- Effective period
-- Superseded rule lineage
+- KPI Result tenant matches the `TenantContext`.
+- KPI Result exists when referenced by ID.
+- KPI Result status is `success`.
+- KPI Result data quality is trusted.
+- KPI Result contains a numeric value.
+- KPI Result period is inside the risk evaluation period.
 
-Approved risk rules are immutable for core execution fields. New logic must be submitted as a new rule version.
+Handlers receive only service-resolved metric values keyed by KPI ID.
 
-## Execution Traceability
+## Governance Lifecycle
 
-Risk assessment results persist:
+Risk definition and rule governance uses these approved lifecycle values:
 
-- Tenant
-- Risk definition ID
-- Rule version ID and version number
-- Entity type and entity ID
-- Assessment period
-- Risk level
-- Reason
-- Evidence
-- Source reference
-- Assessment run ID
+- `draft`
+- `review`
+- `approved`
+- `active`
+- `deprecated`
+- `retired`
 
-Audit events are emitted for risk definition registration, rule submission, rule approval, rule activation, lifecycle changes, assessment request/start/rule selection/completion/rejection/failure, and result views.
+Legacy stored values are normalized safely:
 
-## Current Handler Capability
+- `pending_approval` reads as `review`.
+- `archived` reads as `deprecated`.
+- legacy `moderate` risk level reads as `medium`.
 
-The first approved handler is `threshold`. It compares one governed metric value using one supported operator:
+## Risk Result Lineage
 
-- `lt`
-- `lte`
-- `gt`
-- `gte`
-- `eq`
-- `neq`
-- `between`
+Every persisted risk result includes:
 
-Example rule parameters:
+- Tenant ID
+- Risk definition ID and risk definition version
+- Risk rule version ID and rule version number
+- KPI result IDs used for evaluation
+- KPI formula versions associated with those KPI Results
+- Source record IDs when available
+- Source references and validation/data quality lineage when available
+- Lineage ID
+- Numeric `risk_score`
+- Classified `risk_level`
+- Evidence references and reason text
 
-```json
-{
-  "metric_name": "avg_csat",
-  "operator": "lt",
-  "threshold": 80,
-  "risk_level": "critical",
-  "default_risk_level": "low",
-  "reason": "Average CSAT below governed threshold."
-}
-```
+Only lineage references and metadata are stored. Raw source payloads, raw metric payloads, customer PII, secrets, and credentials must not be persisted in risk results or audit metadata.
+
+## Risk Score And Level
+
+`risk_score` is a deterministic numeric score. `risk_level` is the public classification:
+
+- `low`
+- `medium`
+- `high`
+- `critical`
+
+The foundation threshold handler uses simple deterministic defaults unless a governed rule supplies explicit scores:
+
+- Low: `25.0`
+- Medium: `50.0`
+- High: `75.0`
+- Critical: `100.0`
+
+This is not predictive scoring.
+
+## Audit Events
+
+Approved risk audit event names are:
+
+- `RISK_EVALUATION_REQUESTED`
+- `RISK_EVALUATION_STARTED`
+- `RISK_RULE_SELECTED`
+- `RISK_EVALUATION_COMPLETED`
+- `RISK_EVALUATION_FAILED`
+- `RISK_EVALUATION_REJECTED`
+- `RISK_RESULT_VIEWED`
+- `RISK_ACCESS_DENIED`
+
+Audit metadata must stay tenant-scoped and must not include raw metric payloads, raw source data, secrets, or sensitive values.
+
+## RBAC Permissions
+
+Risk access is controlled by explicit risk permissions:
+
+- `evaluate_risk`
+- `view_risk_results`
+- `manage_risk_definitions`
+- `manage_risk_rules`
+
+Risk evaluation requires `evaluate_risk`. Risk result retrieval requires `view_risk_results`. Risk definition creation and lifecycle changes require `manage_risk_definitions`. Risk rule submission, approval, activation, and versioning require `manage_risk_rules`.
+
+## Future Work
+
+Operational Impact / Operational Weight is deferred.
+
+Risk Priority Score = Risk Score × Operational Impact Score
+
+Do not implement Operational Impact Score in this patch.
 
 ## Explicitly Out Of Scope
 
 - Dashboards
-- Coaching sessions
-- SMART commitments
-- Supervisor recommendations
-- AI or LLM interpretation
+- UI
+- CLI
+- Coaching workflows
+- Recommendations
+- AI
 - Predictive models
+- Operational Impact scoring implementation
 - Dynamic rule execution
-- `eval()`, `exec()`, `compile()`
-- DSLs or expression parsers
+- `eval()`
+- `exec()`
+- `compile()`
+- DSLs
+- Expression parsers
 - Microservices
 - Queues
 - Schedulers
+- Background jobs
+- PostgreSQL migration
+- New frameworks

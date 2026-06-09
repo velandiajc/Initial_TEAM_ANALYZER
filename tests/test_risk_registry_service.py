@@ -6,6 +6,7 @@ from app.core.permissions import GovernanceRole
 from app.core.tenant_context import TenantContext
 from app.models.risk import (
     RiskDefinitionLifecycle,
+    RiskLevel,
     RiskRuleStatus,
 )
 from app.services.database_service import DatabaseService
@@ -109,7 +110,27 @@ def test_risk_rule_requires_separate_approval_and_activation(tmp_path):
     )
 
     assert approved.status == RiskRuleStatus.APPROVED
+    assert active.status == RiskRuleStatus.ACTIVE
     assert active.is_approved_active()
+
+
+def test_rule_versions_start_in_review_status(tmp_path):
+    services = create_services(tmp_path)
+    register_definition(services["registry"])
+
+    rule = services["registry"].submit_rule_version(
+        context(),
+        risk_definition_id="csat-critical-risk",
+        version="1.0",
+        handler_key="threshold",
+        parameters={
+            "metric_name": "csat",
+            "operator": "lt",
+            "threshold": 80,
+        },
+    )
+
+    assert rule.status == RiskRuleStatus.REVIEW
 
 
 def test_only_approved_rules_can_be_activated(tmp_path):
@@ -186,3 +207,43 @@ def test_risk_definition_lifecycle_change_requires_approver_role(tmp_path):
     )
 
     assert definition.lifecycle == RiskDefinitionLifecycle.ACTIVE
+
+
+def test_approved_lifecycle_and_status_values_are_primary():
+    assert [item.value for item in RiskDefinitionLifecycle] == [
+        "draft",
+        "review",
+        "approved",
+        "active",
+        "deprecated",
+        "retired",
+    ]
+    assert [item.value for item in RiskRuleStatus] == [
+        "draft",
+        "review",
+        "approved",
+        "active",
+        "deprecated",
+        "retired",
+    ]
+    assert "pending_approval" not in [
+        item.value
+        for item in RiskDefinitionLifecycle
+    ]
+    assert "archived" not in [
+        item.value
+        for item in RiskDefinitionLifecycle
+    ]
+
+
+def test_legacy_values_are_normalized_without_being_primary():
+    assert RiskLevel.from_value("moderate") == RiskLevel.MEDIUM
+    assert (
+        RiskDefinitionLifecycle.from_value("pending_approval")
+        == RiskDefinitionLifecycle.REVIEW
+    )
+    assert (
+        RiskDefinitionLifecycle.from_value("archived")
+        == RiskDefinitionLifecycle.DEPRECATED
+    )
+    assert RiskRuleStatus.from_value("pending_approval") == RiskRuleStatus.REVIEW
