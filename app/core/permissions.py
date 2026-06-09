@@ -25,14 +25,10 @@ class KPIPermission(Enum):
     REGISTER_SOURCE_TYPE = "register_source_type"
     VALIDATE_OPERATIONAL_SOURCE = "validate_operational_source"
     VIEW_OPERATIONAL_SOURCE = "view_operational_source"
-    REGISTER_RISK_DEFINITION = "register_risk_definition"
-    UPDATE_RISK_OWNERSHIP = "update_risk_ownership"
-    SUBMIT_RISK_RULE = "submit_risk_rule"
-    APPROVE_RISK_RULE = "approve_risk_rule"
-    ACTIVATE_RISK_RULE = "activate_risk_rule"
-    CHANGE_RISK_LIFECYCLE = "change_risk_lifecycle"
-    ASSESS_RISK = "assess_risk"
+    EVALUATE_RISK = "evaluate_risk"
     VIEW_RISK_RESULTS = "view_risk_results"
+    MANAGE_RISK_DEFINITIONS = "manage_risk_definitions"
+    MANAGE_RISK_RULES = "manage_risk_rules"
 
 
 class RBACService:
@@ -50,19 +46,17 @@ class RBACService:
             KPIPermission.VIEW_GOVERNANCE.value,
             KPIPermission.CALCULATE_KPI.value,
             KPIPermission.VIEW_KPI_RESULTS.value,
-            KPIPermission.REGISTER_RISK_DEFINITION.value,
-            KPIPermission.UPDATE_RISK_OWNERSHIP.value,
-            KPIPermission.SUBMIT_RISK_RULE.value,
-            KPIPermission.CHANGE_RISK_LIFECYCLE.value,
-            KPIPermission.ASSESS_RISK.value,
+            KPIPermission.EVALUATE_RISK.value,
             KPIPermission.VIEW_RISK_RESULTS.value,
+            KPIPermission.MANAGE_RISK_DEFINITIONS.value,
+            KPIPermission.MANAGE_RISK_RULES.value,
         },
         GovernanceRole.KPI_STEWARD.value: {
             KPIPermission.WRITE_THRESHOLD.value,
             KPIPermission.SUBMIT_FORMULA.value,
             KPIPermission.VIEW_GOVERNANCE.value,
             KPIPermission.VIEW_KPI_RESULTS.value,
-            KPIPermission.SUBMIT_RISK_RULE.value,
+            KPIPermission.MANAGE_RISK_RULES.value,
             KPIPermission.VIEW_RISK_RESULTS.value,
         },
         GovernanceRole.KPI_APPROVER.value: {
@@ -70,9 +64,8 @@ class RBACService:
             KPIPermission.CHANGE_LIFECYCLE.value,
             KPIPermission.VIEW_GOVERNANCE.value,
             KPIPermission.VIEW_KPI_RESULTS.value,
-            KPIPermission.APPROVE_RISK_RULE.value,
-            KPIPermission.ACTIVATE_RISK_RULE.value,
-            KPIPermission.CHANGE_RISK_LIFECYCLE.value,
+            KPIPermission.MANAGE_RISK_RULES.value,
+            KPIPermission.MANAGE_RISK_DEFINITIONS.value,
             KPIPermission.VIEW_RISK_RESULTS.value,
         },
     }
@@ -134,7 +127,7 @@ class RBACService:
         if context.user_id == rule_version.created_by:
             return False
 
-        return self.can(context, KPIPermission.APPROVE_RISK_RULE)
+        return self.can(context, KPIPermission.MANAGE_RISK_RULES)
 
     def require_risk_rule_approval(
         self,
@@ -146,7 +139,7 @@ class RBACService:
         if context.user_id == rule_version.created_by:
             raise PermissionError("Creator cannot approve own risk rule.")
 
-        self.require_permission(context, KPIPermission.APPROVE_RISK_RULE)
+        self.require_permission(context, KPIPermission.MANAGE_RISK_RULES)
 
     def _permission_value(self, permission: KPIPermission | str) -> str:
         if isinstance(permission, KPIPermission):
