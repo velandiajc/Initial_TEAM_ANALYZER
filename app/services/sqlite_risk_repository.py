@@ -332,6 +332,7 @@ class SQLiteRiskDefinitionRepository:
     ) -> None:
         context = require_tenant_context(context)
         self._require_same_tenant(context, result.tenant_id)
+        self._validate_result_lineage(result)
 
         with self.database_service.connect() as conn:
             cursor = conn.cursor()
@@ -346,16 +347,23 @@ class SQLiteRiskDefinitionRepository:
                     entity_id,
                     period_start,
                     period_end,
+                    risk_score,
                     risk_level,
                     status,
                     reason,
                     evidence_json,
                     source_reference,
                     assessment_run_id,
+                    risk_definition_version,
+                    kpi_result_ids_json,
+                    formula_versions_json,
+                    source_record_ids_json,
+                    source_validation_lineage_json,
+                    lineage_id,
                     assessed_at,
                     metadata_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 result.tenant_id,
                 result.result_id,
@@ -366,12 +374,19 @@ class SQLiteRiskDefinitionRepository:
                 result.entity_id,
                 _dt_to_text(result.period_start),
                 _dt_to_text(result.period_end),
+                result.risk_score,
                 result.risk_level.value,
                 result.status.value,
                 result.reason,
                 json.dumps(result.evidence),
                 result.source_reference,
                 result.assessment_run_id,
+                result.risk_definition_version,
+                json.dumps(result.kpi_result_ids),
+                json.dumps(result.formula_versions),
+                json.dumps(result.source_record_ids),
+                json.dumps(result.source_validation_lineage),
+                result.lineage_id,
                 _dt_to_text(result.assessed_at),
                 json.dumps(result.metadata),
             ))
@@ -397,12 +412,19 @@ class SQLiteRiskDefinitionRepository:
                     entity_id,
                     period_start,
                     period_end,
+                    risk_score,
                     risk_level,
                     status,
                     reason,
                     evidence_json,
                     source_reference,
                     assessment_run_id,
+                    risk_definition_version,
+                    kpi_result_ids_json,
+                    formula_versions_json,
+                    source_record_ids_json,
+                    source_validation_lineage_json,
+                    lineage_id,
                     assessed_at,
                     metadata_json
                 FROM risk_assessment_results
@@ -439,12 +461,19 @@ class SQLiteRiskDefinitionRepository:
                     entity_id,
                     period_start,
                     period_end,
+                    risk_score,
                     risk_level,
                     status,
                     reason,
                     evidence_json,
                     source_reference,
                     assessment_run_id,
+                    risk_definition_version,
+                    kpi_result_ids_json,
+                    formula_versions_json,
+                    source_record_ids_json,
+                    source_validation_lineage_json,
+                    lineage_id,
                     assessed_at,
                     metadata_json
                 FROM risk_assessment_results
@@ -509,14 +538,21 @@ class SQLiteRiskDefinitionRepository:
             entity_id=row[6],
             period_start=_text_to_dt(row[7]),
             period_end=_text_to_dt(row[8]),
-            risk_level=RiskLevel.from_value(row[9]),
-            status=RiskAssessmentStatus.from_value(row[10]),
-            reason=row[11],
-            evidence=json.loads(row[12] or "{}"),
-            source_reference=row[13] or "",
-            assessment_run_id=row[14],
-            assessed_at=_text_to_dt(row[15]),
-            metadata=json.loads(row[16] or "{}"),
+            risk_score=row[9],
+            risk_level=RiskLevel.from_value(row[10]),
+            status=RiskAssessmentStatus.from_value(row[11]),
+            reason=row[12],
+            evidence=json.loads(row[13] or "{}"),
+            source_reference=row[14] or "",
+            assessment_run_id=row[15],
+            risk_definition_version=row[16] or "1.0",
+            kpi_result_ids=json.loads(row[17] or "[]"),
+            formula_versions=json.loads(row[18] or "[]"),
+            source_record_ids=json.loads(row[19] or "[]"),
+            source_validation_lineage=json.loads(row[20] or "{}"),
+            lineage_id=row[21] or "",
+            assessed_at=_text_to_dt(row[22]),
+            metadata=json.loads(row[23] or "{}"),
         )
 
     def _reject_approved_rule_mutation(
@@ -545,8 +581,29 @@ class SQLiteRiskDefinitionRepository:
             if getattr(existing, field_name) != getattr(rule_version, field_name):
                 raise PermissionError("Approved risk rules are immutable.")
 
-        if rule_version.status != RiskRuleStatus.APPROVED:
+        if rule_version.status not in {
+            RiskRuleStatus.APPROVED,
+            RiskRuleStatus.ACTIVE,
+            RiskRuleStatus.DEPRECATED,
+            RiskRuleStatus.RETIRED,
+        }:
             raise PermissionError("Approved risk rules are immutable.")
+
+    def _validate_result_lineage(
+        self,
+        result: RiskAssessmentResult
+    ) -> None:
+        if not result.kpi_result_ids:
+            raise ValueError("Risk result requires KPI result lineage.")
+
+        if not result.lineage_id:
+            raise ValueError("Risk result requires lineage_id.")
+
+        if result.risk_score is None:
+            raise ValueError("Risk result requires risk_score.")
+
+        if not result.formula_versions:
+            raise ValueError("Risk result requires formula lineage.")
 
     def _require_same_tenant(
         self,

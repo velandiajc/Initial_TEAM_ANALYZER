@@ -42,7 +42,7 @@ class RiskRegistryService:
         context = require_tenant_context(context)
         self.rbac_service.require_permission(
             context,
-            KPIPermission.REGISTER_RISK_DEFINITION
+            KPIPermission.MANAGE_RISK_DEFINITIONS
         )
 
         definition = RiskDefinition(
@@ -82,7 +82,7 @@ class RiskRegistryService:
         context = require_tenant_context(context)
         self.rbac_service.require_permission(
             context,
-            KPIPermission.UPDATE_RISK_OWNERSHIP
+            KPIPermission.MANAGE_RISK_DEFINITIONS
         )
         _require_text(owner_user_id, "owner_user_id")
         _require_text(steward_user_id, "steward_user_id")
@@ -121,7 +121,7 @@ class RiskRegistryService:
         context = require_tenant_context(context)
         self.rbac_service.require_permission(
             context,
-            KPIPermission.SUBMIT_RISK_RULE
+            KPIPermission.MANAGE_RISK_RULES
         )
         self._require_definition(context, risk_definition_id)
 
@@ -133,7 +133,7 @@ class RiskRegistryService:
             handler_key=handler_key,
             parameters=parameters,
             created_by=context.user_id,
-            status=RiskRuleStatus.PENDING_APPROVAL,
+            status=RiskRuleStatus.REVIEW,
             effective_from=effective_from,
             effective_to=effective_to,
             supersedes_rule_version_id=supersedes_rule_version_id,
@@ -170,8 +170,8 @@ class RiskRegistryService:
         if rule_version is None:
             raise ValueError(f"Risk rule version not found: {rule_version_id}")
 
-        if rule_version.status != RiskRuleStatus.PENDING_APPROVAL:
-            raise ValueError("Only pending risk rule versions can be approved.")
+        if rule_version.status != RiskRuleStatus.REVIEW:
+            raise ValueError("Only review risk rule versions can be approved.")
 
         self.rbac_service.require_risk_rule_approval(context, rule_version)
         rule_version.approve(context.user_id)
@@ -198,7 +198,7 @@ class RiskRegistryService:
         context = require_tenant_context(context)
         self.rbac_service.require_permission(
             context,
-            KPIPermission.ACTIVATE_RISK_RULE
+            KPIPermission.MANAGE_RISK_RULES
         )
         rule_version = self.risk_repository.get_rule_version(
             context,
@@ -236,7 +236,7 @@ class RiskRegistryService:
         context = require_tenant_context(context)
         self.rbac_service.require_permission(
             context,
-            KPIPermission.CHANGE_RISK_LIFECYCLE
+            KPIPermission.MANAGE_RISK_DEFINITIONS
         )
         lifecycle = RiskDefinitionLifecycle.from_value(lifecycle)
         definition = self.risk_repository.update_lifecycle(
