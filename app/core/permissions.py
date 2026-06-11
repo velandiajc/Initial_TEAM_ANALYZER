@@ -9,6 +9,9 @@ class GovernanceRole(Enum):
     KPI_OWNER = "kpi_owner"
     KPI_STEWARD = "kpi_steward"
     KPI_APPROVER = "kpi_approver"
+    PERFORMANCE_COACH = "performance_coach"
+    PERFORMANCE_MANAGER = "performance_manager"
+    LEADERSHIP = "leadership"
     GOVERNANCE_ADMIN = "governance_admin"
 
 
@@ -31,11 +34,25 @@ class KPIPermission(Enum):
     MANAGE_RISK_RULES = "manage_risk_rules"
 
 
+class CoachingPermission(Enum):
+    VIEW_COACHING_SESSION = "view_coaching_session"
+    CREATE_COACHING_SESSION = "create_coaching_session"
+    EDIT_COACHING_SESSION = "edit_coaching_session"
+    CREATE_COMMITMENT = "create_commitment"
+    UPDATE_COMMITMENT = "update_commitment"
+    CREATE_FOLLOWUP = "create_followup"
+    VIEW_PERFORMANCE_TIMELINE = "view_performance_timeline"
+    VIEW_PRIVATE_COACHING_NOTE = "view_private_coaching_note"
+
+
 class RBACService:
     ROLE_PERMISSIONS = {
         GovernanceRole.GOVERNANCE_ADMIN.value: {
             permission.value
             for permission in KPIPermission
+        } | {
+            permission.value
+            for permission in CoachingPermission
         },
         GovernanceRole.KPI_OWNER.value: {
             KPIPermission.REGISTER_KPI.value,
@@ -68,12 +85,30 @@ class RBACService:
             KPIPermission.MANAGE_RISK_DEFINITIONS.value,
             KPIPermission.VIEW_RISK_RESULTS.value,
         },
+        GovernanceRole.PERFORMANCE_COACH.value: {
+            CoachingPermission.VIEW_COACHING_SESSION.value,
+            CoachingPermission.CREATE_COACHING_SESSION.value,
+            CoachingPermission.EDIT_COACHING_SESSION.value,
+            CoachingPermission.CREATE_COMMITMENT.value,
+            CoachingPermission.UPDATE_COMMITMENT.value,
+            CoachingPermission.CREATE_FOLLOWUP.value,
+            CoachingPermission.VIEW_PERFORMANCE_TIMELINE.value,
+        },
+        GovernanceRole.PERFORMANCE_MANAGER.value: {
+            permission.value
+            for permission in CoachingPermission
+        },
+        GovernanceRole.LEADERSHIP.value: {
+            CoachingPermission.VIEW_COACHING_SESSION.value,
+            CoachingPermission.VIEW_PERFORMANCE_TIMELINE.value,
+            CoachingPermission.VIEW_PRIVATE_COACHING_NOTE.value,
+        },
     }
 
     def can(
         self,
         context: TenantContext | None,
-        permission: KPIPermission | str
+        permission: KPIPermission | CoachingPermission | str
     ) -> bool:
         context = require_tenant_context(context)
         permission_value = self._permission_value(permission)
@@ -86,7 +121,7 @@ class RBACService:
     def require_permission(
         self,
         context: TenantContext | None,
-        permission: KPIPermission | str
+        permission: KPIPermission | CoachingPermission | str
     ) -> None:
         if not self.can(context, permission):
             raise PermissionError(
@@ -141,8 +176,11 @@ class RBACService:
 
         self.require_permission(context, KPIPermission.MANAGE_RISK_RULES)
 
-    def _permission_value(self, permission: KPIPermission | str) -> str:
-        if isinstance(permission, KPIPermission):
+    def _permission_value(
+        self,
+        permission: KPIPermission | CoachingPermission | str
+    ) -> str:
+        if isinstance(permission, (KPIPermission, CoachingPermission)):
             return permission.value
 
         return str(permission).strip().lower()
