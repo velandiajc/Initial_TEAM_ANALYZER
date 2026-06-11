@@ -8,7 +8,9 @@ class DatabaseService:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
     def connect(self):
-        return sqlite3.connect(self.db_path)
+        connection = sqlite3.connect(self.db_path)
+        connection.execute("PRAGMA foreign_keys = ON")
+        return connection
 
     def initialize(self):
         with self.connect() as conn:
@@ -344,6 +346,156 @@ class DatabaseService:
                 "TEXT"
             )
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS performance_opportunities (
+                    tenant_id TEXT NOT NULL,
+                    opportunity_id TEXT NOT NULL,
+                    employee_id TEXT NOT NULL,
+                    opportunity_type TEXT NOT NULL,
+                    business_reason TEXT NOT NULL,
+                    evidence_pack_id TEXT NOT NULL,
+                    risk_result_id TEXT NOT NULL,
+                    owner TEXT NOT NULL,
+                    lineage_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, opportunity_id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS coaching_sessions (
+                    tenant_id TEXT NOT NULL,
+                    coaching_session_id TEXT NOT NULL,
+                    employee_id TEXT NOT NULL,
+                    session_owner_id TEXT NOT NULL,
+                    performance_opportunity_id TEXT NOT NULL,
+                    evidence_pack_id TEXT NOT NULL,
+                    evidence_version_snapshot TEXT NOT NULL,
+                    evidence_artifact_ids_snapshot_json TEXT NOT NULL DEFAULT '[]',
+                    risk_result_id TEXT NOT NULL,
+                    risk_score_snapshot REAL NOT NULL,
+                    risk_level_snapshot TEXT NOT NULL,
+                    risk_classification_snapshot TEXT NOT NULL,
+                    risk_definition_version TEXT NOT NULL,
+                    risk_rule_version TEXT NOT NULL,
+                    coaching_version TEXT NOT NULL,
+                    lineage_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, coaching_session_id),
+                    FOREIGN KEY (tenant_id, performance_opportunity_id)
+                        REFERENCES performance_opportunities(
+                            tenant_id,
+                            opportunity_id
+                        )
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS coaching_commitments (
+                    tenant_id TEXT NOT NULL,
+                    commitment_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    employee_id TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    target_date TEXT NOT NULL,
+                    lineage_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, commitment_id),
+                    FOREIGN KEY (tenant_id, session_id)
+                        REFERENCES coaching_sessions(
+                            tenant_id,
+                            coaching_session_id
+                        )
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS coaching_followups (
+                    tenant_id TEXT NOT NULL,
+                    followup_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    commitment_id TEXT NOT NULL,
+                    reviewer_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    outcome TEXT NOT NULL DEFAULT '',
+                    lineage_id TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, followup_id),
+                    FOREIGN KEY (tenant_id, session_id)
+                        REFERENCES coaching_sessions(
+                            tenant_id,
+                            coaching_session_id
+                        ),
+                    FOREIGN KEY (tenant_id, commitment_id)
+                        REFERENCES coaching_commitments(
+                            tenant_id,
+                            commitment_id
+                        )
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS coaching_notes (
+                    tenant_id TEXT NOT NULL,
+                    note_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    visibility_level TEXT NOT NULL,
+                    content_reference TEXT NOT NULL,
+                    lineage_id TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, note_id),
+                    FOREIGN KEY (tenant_id, session_id)
+                        REFERENCES coaching_sessions(
+                            tenant_id,
+                            coaching_session_id
+                        )
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS performance_timeline_events (
+                    tenant_id TEXT NOT NULL,
+                    timeline_event_id TEXT NOT NULL,
+                    employee_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    event_source TEXT NOT NULL,
+                    source_entity_id TEXT NOT NULL,
+                    lineage_id TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, timeline_event_id),
+                    UNIQUE (
+                        tenant_id,
+                        employee_id,
+                        event_type,
+                        event_source,
+                        source_entity_id
+                    )
+                )
+            """)
+
+            self._create_performance_history_triggers(cursor)
+
             conn.commit()
 
     def _ensure_column(
@@ -364,3 +516,141 @@ class DatabaseService:
                 f"ALTER TABLE {table_name} "
                 f"ADD COLUMN {column_name} {column_definition}"
             )
+
+    def _create_performance_history_triggers(self, cursor):
+        protected_tables = [
+            "performance_opportunities",
+            "coaching_sessions",
+            "coaching_commitments",
+            "coaching_followups",
+            "coaching_notes",
+            "performance_timeline_events",
+        ]
+        for table_name in protected_tables:
+            cursor.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS no_delete_{table_name}
+                BEFORE DELETE ON {table_name}
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'Performance management records cannot be deleted.'
+                    );
+                END
+            """)
+
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS immutable_opportunity_history
+            BEFORE UPDATE ON performance_opportunities
+            WHEN
+                OLD.tenant_id IS NOT NEW.tenant_id OR
+                OLD.opportunity_id IS NOT NEW.opportunity_id OR
+                OLD.employee_id IS NOT NEW.employee_id OR
+                OLD.opportunity_type IS NOT NEW.opportunity_type OR
+                OLD.business_reason IS NOT NEW.business_reason OR
+                OLD.evidence_pack_id IS NOT NEW.evidence_pack_id OR
+                OLD.risk_result_id IS NOT NEW.risk_result_id OR
+                OLD.lineage_id IS NOT NEW.lineage_id OR
+                OLD.created_by IS NOT NEW.created_by OR
+                OLD.created_at IS NOT NEW.created_at
+            BEGIN
+                SELECT RAISE(
+                    ABORT,
+                    'Historical opportunity fields are immutable.'
+                );
+            END
+        """)
+
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS immutable_coaching_session_snapshots
+            BEFORE UPDATE ON coaching_sessions
+            WHEN
+                OLD.tenant_id IS NOT NEW.tenant_id OR
+                OLD.coaching_session_id IS NOT NEW.coaching_session_id OR
+                OLD.employee_id IS NOT NEW.employee_id OR
+                OLD.session_owner_id IS NOT NEW.session_owner_id OR
+                OLD.performance_opportunity_id
+                    IS NOT NEW.performance_opportunity_id OR
+                OLD.evidence_pack_id IS NOT NEW.evidence_pack_id OR
+                OLD.evidence_version_snapshot
+                    IS NOT NEW.evidence_version_snapshot OR
+                OLD.evidence_artifact_ids_snapshot_json
+                    IS NOT NEW.evidence_artifact_ids_snapshot_json OR
+                OLD.risk_result_id IS NOT NEW.risk_result_id OR
+                OLD.risk_score_snapshot IS NOT NEW.risk_score_snapshot OR
+                OLD.risk_level_snapshot IS NOT NEW.risk_level_snapshot OR
+                OLD.risk_classification_snapshot
+                    IS NOT NEW.risk_classification_snapshot OR
+                OLD.risk_definition_version
+                    IS NOT NEW.risk_definition_version OR
+                OLD.risk_rule_version IS NOT NEW.risk_rule_version OR
+                OLD.coaching_version IS NOT NEW.coaching_version OR
+                OLD.lineage_id IS NOT NEW.lineage_id OR
+                OLD.created_by IS NOT NEW.created_by OR
+                OLD.created_at IS NOT NEW.created_at
+            BEGIN
+                SELECT RAISE(
+                    ABORT,
+                    'Coaching session snapshots are immutable.'
+                );
+            END
+        """)
+
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS immutable_commitment_history
+            BEFORE UPDATE ON coaching_commitments
+            WHEN
+                OLD.tenant_id IS NOT NEW.tenant_id OR
+                OLD.commitment_id IS NOT NEW.commitment_id OR
+                OLD.session_id IS NOT NEW.session_id OR
+                OLD.employee_id IS NOT NEW.employee_id OR
+                OLD.description IS NOT NEW.description OR
+                OLD.target_date IS NOT NEW.target_date OR
+                OLD.lineage_id IS NOT NEW.lineage_id OR
+                OLD.created_by IS NOT NEW.created_by OR
+                OLD.created_at IS NOT NEW.created_at
+            BEGIN
+                SELECT RAISE(
+                    ABORT,
+                    'Historical commitment fields are immutable.'
+                );
+            END
+        """)
+
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS immutable_followup_history
+            BEFORE UPDATE ON coaching_followups
+            WHEN
+                OLD.tenant_id IS NOT NEW.tenant_id OR
+                OLD.followup_id IS NOT NEW.followup_id OR
+                OLD.session_id IS NOT NEW.session_id OR
+                OLD.commitment_id IS NOT NEW.commitment_id OR
+                OLD.reviewer_id IS NOT NEW.reviewer_id OR
+                OLD.lineage_id IS NOT NEW.lineage_id OR
+                OLD.created_by IS NOT NEW.created_by OR
+                OLD.created_at IS NOT NEW.created_at
+            BEGIN
+                SELECT RAISE(
+                    ABORT,
+                    'Historical follow-up fields are immutable.'
+                );
+            END
+        """)
+
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS immutable_coaching_notes
+            BEFORE UPDATE ON coaching_notes
+            BEGIN
+                SELECT RAISE(ABORT, 'Coaching notes are immutable.');
+            END
+        """)
+
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS immutable_performance_timeline
+            BEFORE UPDATE ON performance_timeline_events
+            BEGIN
+                SELECT RAISE(
+                    ABORT,
+                    'Performance timeline events are immutable.'
+                );
+            END
+        """)
