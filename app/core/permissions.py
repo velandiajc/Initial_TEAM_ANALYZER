@@ -62,6 +62,17 @@ class OperationalImpactPermission(Enum):
     CALCULATE_RISK_PRIORITY = "calculate_risk_priority"
 
 
+class WorkspacePermission(Enum):
+    VIEW_SUPERVISOR_WORKSPACE = "view_supervisor_workspace"
+    VIEW_SUPERVISOR_PRIORITY_QUEUE = "view_supervisor_priority_queue"
+    VIEW_TEAM_PERFORMANCE_WORKSPACE = "view_team_performance_workspace"
+    VIEW_AGENT_PERFORMANCE_PROFILE = "view_agent_performance_profile"
+    VIEW_EMPLOYEE_TIMELINE = "view_employee_timeline"
+    VIEW_COACHING_WORKSPACE = "view_coaching_workspace"
+    VIEW_PRIVATE_COACHING_NOTES = "view_private_coaching_notes"
+    VIEW_LEADERSHIP_NOTES = "view_leadership_notes"
+
+
 class RBACService:
     ROLE_PERMISSIONS = {
         GovernanceRole.GOVERNANCE_ADMIN.value: {
@@ -73,6 +84,9 @@ class RBACService:
         } | {
             permission.value
             for permission in OperationalImpactPermission
+        } | {
+            permission.value
+            for permission in WorkspacePermission
         },
         GovernanceRole.KPI_OWNER.value: {
             KPIPermission.REGISTER_KPI.value,
@@ -148,6 +162,13 @@ class RBACService:
             OperationalImpactPermission.CALCULATE_OPERATIONAL_IMPACT.value,
             OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
             OperationalImpactPermission.CALCULATE_RISK_PRIORITY.value,
+            WorkspacePermission.VIEW_SUPERVISOR_WORKSPACE.value,
+            WorkspacePermission.VIEW_SUPERVISOR_PRIORITY_QUEUE.value,
+            WorkspacePermission.VIEW_TEAM_PERFORMANCE_WORKSPACE.value,
+            WorkspacePermission.VIEW_AGENT_PERFORMANCE_PROFILE.value,
+            WorkspacePermission.VIEW_EMPLOYEE_TIMELINE.value,
+            WorkspacePermission.VIEW_COACHING_WORKSPACE.value,
+            WorkspacePermission.VIEW_PRIVATE_COACHING_NOTES.value,
         },
         GovernanceRole.LEADERSHIP.value: {
             CoachingPermission.VIEW_COACHING_SESSION.value,
@@ -155,6 +176,14 @@ class RBACService:
             CoachingPermission.VIEW_PRIVATE_COACHING_NOTE.value,
             OperationalImpactPermission.VIEW_OPERATIONAL_IMPACT.value,
             OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
+            WorkspacePermission.VIEW_SUPERVISOR_WORKSPACE.value,
+            WorkspacePermission.VIEW_SUPERVISOR_PRIORITY_QUEUE.value,
+            WorkspacePermission.VIEW_TEAM_PERFORMANCE_WORKSPACE.value,
+            WorkspacePermission.VIEW_AGENT_PERFORMANCE_PROFILE.value,
+            WorkspacePermission.VIEW_EMPLOYEE_TIMELINE.value,
+            WorkspacePermission.VIEW_COACHING_WORKSPACE.value,
+            WorkspacePermission.VIEW_PRIVATE_COACHING_NOTES.value,
+            WorkspacePermission.VIEW_LEADERSHIP_NOTES.value,
         },
     }
 
@@ -165,6 +194,7 @@ class RBACService:
             KPIPermission
             | CoachingPermission
             | OperationalImpactPermission
+            | WorkspacePermission
             | str
         )
     ) -> bool:
@@ -183,6 +213,7 @@ class RBACService:
             KPIPermission
             | CoachingPermission
             | OperationalImpactPermission
+            | WorkspacePermission
             | str
         )
     ) -> None:
@@ -245,6 +276,7 @@ class RBACService:
             KPIPermission
             | CoachingPermission
             | OperationalImpactPermission
+            | WorkspacePermission
             | str
         )
     ) -> str:
@@ -254,6 +286,7 @@ class RBACService:
                 KPIPermission,
                 CoachingPermission,
                 OperationalImpactPermission,
+                WorkspacePermission,
             ),
         ):
             return permission.value
