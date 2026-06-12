@@ -1,6 +1,8 @@
 import pandas as pd
 from pathlib import Path
 
+from app.services.pci_redaction_service import PCIRedactionService
+
 FILE = Path("Data/Raw/Team JV - MAY.xlsx")
 REPORTS = Path("Reports")
 REPORTS.mkdir(exist_ok=True)
@@ -310,7 +312,7 @@ def create_leadership_summary(df):
     lines.append("4. Use Main DSAT Driver to define the customer experience coaching angle.")
     lines.append("5. Keep Moderate Risk agents under weekly follow-up until CSAT and QA stabilize.")
 
-    summary = "\n".join(lines)
+    summary = PCIRedactionService().redact("\n".join(lines))
 
     with open(REPORTS / "leadership_summary.txt", "w", encoding="utf-8") as file:
         file.write(summary)
@@ -326,7 +328,9 @@ def export_json(final):
         lambda x: round(x, 2) if pd.notna(x) else None
     )
 
-    records = json_df.to_dict(orient="records")
+    records = PCIRedactionService().redact_structure(
+        json_df.to_dict(orient="records")
+    )
 
     with open(REPORTS / "team_data.json", "w", encoding="utf-8") as file:
         import json
@@ -373,11 +377,22 @@ def main():
         ]
     ]
 
-    final.to_csv(REPORTS / "combined_team_analysis.csv", index=False)
+    pci_service = PCIRedactionService()
+    safe_final = final.map(
+        lambda value: (
+            pci_service.redact(value)
+            if isinstance(value, str)
+            else value
+        )
+    )
+    safe_final.to_csv(
+        REPORTS / "combined_team_analysis.csv",
+        index=False,
+    )
 
-    create_leadership_summary(final)
+    create_leadership_summary(safe_final)
 
-    export_json(final)
+    export_json(safe_final)
 
     print("Reports created:")
     print("Reports/combined_team_analysis.csv")

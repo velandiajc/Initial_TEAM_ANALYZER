@@ -1,14 +1,19 @@
 import argparse
 import asyncio
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from time import perf_counter
 
+from app.core.permissions import GovernanceRole
+from app.core.tenant_context import TenantContext
 from app.services.agent_registry import AgentRegistry
 from app.services.cleanup_service import CleanupService
 from app.services.database_service import DatabaseService
+from app.services.kpi_audit_service import KPIAuditService
 from app.services.sqlite_agent_discovery_service import SQLiteAgentDiscoveryService
 from app.services.sqlite_agent_repository import SQLiteAgentRepository
+from app.services.sqlite_kpi_audit_repository import SQLiteKPIAuditRepository
 from app.services.sqlite_survey_repository import SQLiteSurveyRepository
 from app.services.survey_insight_service import SurveyInsightService
 from app.services.survey_loader import SurveyLoader
@@ -53,10 +58,24 @@ async def run_cleanup(reset):
         await asyncio.to_thread(cleanup.run_light_cleanup)
 
 
-async def initialize_database():
-    database = DatabaseService(DB_PATH)
+def create_local_context():
+    return TenantContext(
+        tenant_id=os.getenv("TEAM_ANALYZER_TENANT_ID", "legacy-local"),
+        user_id=os.getenv("TEAM_ANALYZER_USER_ID", "local-operator"),
+        roles={GovernanceRole.GOVERNANCE_ADMIN.value},
+    )
+
+
+async def initialize_database(context):
+    database = DatabaseService(
+        DB_PATH,
+        legacy_tenant_id=context.tenant_id,
+    )
     await asyncio.to_thread(database.initialize)
-    return database
+    audit_service = KPIAuditService(
+        SQLiteKPIAuditRepository(database)
+    )
+    return database, audit_service
 
 
 async def find_latest_survey():
@@ -77,12 +96,13 @@ async def find_latest_survey():
     return latest_survey
 
 
-async def load_surveys(latest_survey):
+async def load_surveys(context, audit_service, latest_survey):
     registry = AgentRegistry()
-    survey_loader = SurveyLoader(registry)
+    survey_loader = SurveyLoader(registry, audit_service)
 
     surveys = await asyncio.to_thread(
         survey_loader.load_from_csv,
+        context,
         latest_survey
     )
 
@@ -94,15 +114,17 @@ async def load_surveys(latest_survey):
     return surveys
 
 
-async def discover_agents(database, surveys):
-    agent_repo = SQLiteAgentRepository(database)
+async def discover_agents(context, database, audit_service, surveys):
+    agent_repo = SQLiteAgentRepository(database, audit_service)
 
     discovery = SQLiteAgentDiscoveryService(
-        agent_repo
+        agent_repo,
+        audit_service,
     )
 
     result = await asyncio.to_thread(
         discovery.discover_from_surveys,
+        context,
         surveys
     )
 
@@ -112,20 +134,21 @@ async def discover_agents(database, surveys):
     return result
 
 
-async def save_surveys(database, surveys):
-    agent_repo = SQLiteAgentRepository(database)
-    survey_repo = SQLiteSurveyRepository(database)
+async def save_surveys(context, database, audit_service, surveys):
+    agent_repo = SQLiteAgentRepository(database, audit_service)
+    survey_repo = SQLiteSurveyRepository(database, audit_service)
 
     def save_all():
         for survey in surveys:
             matched_agent_id = agent_repo.find_agent_id(
+                context,
                 survey.agent_id
             )
 
             if matched_agent_id:
                 survey.agent_id = matched_agent_id
 
-            survey_repo.upsert_survey(survey)
+            survey_repo.upsert_survey(context, survey)
 
     await asyncio.to_thread(save_all)
 
@@ -157,22 +180,37 @@ async def export_survey_insights(insight_service, insights):
 
 
 async def run_pipeline(reset):
+    context = create_local_context()
     with timed_step("setup"):
         await run_cleanup(reset)
         ensure_local_folders()
-        database = await initialize_database()
+        database, audit_service = await initialize_database(context)
 
     with timed_step("file discovery"):
         latest_survey = await find_latest_survey()
 
     with timed_step("CSV loading"):
-        surveys = await load_surveys(latest_survey)
+        surveys = await load_surveys(
+            context,
+            audit_service,
+            latest_survey,
+        )
 
     with timed_step("agent discovery"):
-        await discover_agents(database, surveys)
+        await discover_agents(
+            context,
+            database,
+            audit_service,
+            surveys,
+        )
 
     with timed_step("survey persistence"):
-        await save_surveys(database, surveys)
+        await save_surveys(
+            context,
+            database,
+            audit_service,
+            surveys,
+        )
 
     insight_service = create_survey_insight_service(surveys)
 

@@ -32,6 +32,10 @@ class KPIPermission(Enum):
     VIEW_RISK_RESULTS = "view_risk_results"
     MANAGE_RISK_DEFINITIONS = "manage_risk_definitions"
     MANAGE_RISK_RULES = "manage_risk_rules"
+    MANAGE_AGENT_RECORDS = "manage_agent_records"
+    VIEW_AGENT_RECORDS = "view_agent_records"
+    INGEST_SURVEYS = "ingest_surveys"
+    VIEW_SURVEYS = "view_surveys"
 
 
 class CoachingPermission(Enum):
@@ -67,6 +71,10 @@ class RBACService:
             KPIPermission.VIEW_RISK_RESULTS.value,
             KPIPermission.MANAGE_RISK_DEFINITIONS.value,
             KPIPermission.MANAGE_RISK_RULES.value,
+            KPIPermission.MANAGE_AGENT_RECORDS.value,
+            KPIPermission.VIEW_AGENT_RECORDS.value,
+            KPIPermission.INGEST_SURVEYS.value,
+            KPIPermission.VIEW_SURVEYS.value,
         },
         GovernanceRole.KPI_STEWARD.value: {
             KPIPermission.WRITE_THRESHOLD.value,
@@ -75,6 +83,9 @@ class RBACService:
             KPIPermission.VIEW_KPI_RESULTS.value,
             KPIPermission.MANAGE_RISK_RULES.value,
             KPIPermission.VIEW_RISK_RESULTS.value,
+            KPIPermission.VIEW_AGENT_RECORDS.value,
+            KPIPermission.INGEST_SURVEYS.value,
+            KPIPermission.VIEW_SURVEYS.value,
         },
         GovernanceRole.KPI_APPROVER.value: {
             KPIPermission.APPROVE_FORMULA.value,
@@ -84,6 +95,8 @@ class RBACService:
             KPIPermission.MANAGE_RISK_RULES.value,
             KPIPermission.MANAGE_RISK_DEFINITIONS.value,
             KPIPermission.VIEW_RISK_RESULTS.value,
+            KPIPermission.VIEW_AGENT_RECORDS.value,
+            KPIPermission.VIEW_SURVEYS.value,
         },
         GovernanceRole.PERFORMANCE_COACH.value: {
             CoachingPermission.VIEW_COACHING_SESSION.value,

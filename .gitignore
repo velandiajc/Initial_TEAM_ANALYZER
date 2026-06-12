@@ -15,6 +15,9 @@ __pycache__/
 # Local data / sensitive files
 Data/
 Data/raw/
+Data/CALLS/
+Data/**/TRANSCRIPTS/
+Data/**/ANALYZED/
 data/raw/evidence_samples/
 data/processed/evidence/
 data/processed/evidence/review/
@@ -39,6 +42,21 @@ Reports/*demo*.db
 !templates/
 !templates/coaching_evidence_pack_template.json
 
+# Generated repository trees / local inventories
+project_structure.txt
+project_structure*.txt
+project_tree*.txt
+repository_tree*.txt
+tree_dump*.txt
+local_inventory*
+*.local-inventory.*
+
+# Generated operational analysis artifacts
+*_analysis.json
+*_analysis.md
+*_transcript.md
+transcript_*.md
+
 # Runtime / tool workspaces
 .codex/
 
@@ -50,6 +68,8 @@ Thumbs.db
 
 .tmp_pytest/
 .tmp_pytest_run/
+.tmp_pytest*/
+.tmp_security*/
 __pycache__/
 *.pyc
 .pytest_cache/

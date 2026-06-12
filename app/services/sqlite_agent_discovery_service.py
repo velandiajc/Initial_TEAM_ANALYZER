@@ -2,10 +2,19 @@ import unicodedata
 
 import pandas as pd
 
+from app.core.permissions import KPIPermission
+from app.services.legacy_governance import LegacyGovernanceSupport
 
-class SQLiteAgentDiscoveryService:
 
-    def __init__(self, agent_repository):
+class SQLiteAgentDiscoveryService(LegacyGovernanceSupport):
+
+    def __init__(
+        self,
+        agent_repository,
+        audit_service,
+        rbac_service=None,
+    ):
+        super().__init__(audit_service, rbac_service)
         self.agent_repository = agent_repository
 
     def _normalize_text(self, value):
@@ -71,7 +80,14 @@ class SQLiteAgentDiscoveryService:
             if alias
         )
 
-    def discover_from_surveys(self, surveys):
+    def discover_from_surveys(self, context, surveys):
+        context = self.require_context(context)
+        self.require_permission(
+            context,
+            KPIPermission.MANAGE_AGENT_RECORDS,
+            "agent_discovery",
+            "survey_batch",
+        )
         created = 0
         updated = 0
 
@@ -87,9 +103,9 @@ class SQLiteAgentDiscoveryService:
             )
 
             existing_agent_id = (
-                self.agent_repository.find_agent_id(agent_no)
-                or self.agent_repository.find_agent_id(agent_name)
-                or self.agent_repository.find_agent_id(proper_name)
+                self.agent_repository.find_agent_id(context, agent_no)
+                or self.agent_repository.find_agent_id(context, agent_name)
+                or self.agent_repository.find_agent_id(context, proper_name)
             )
 
             canonical_agent_id = (
@@ -116,14 +132,22 @@ class SQLiteAgentDiscoveryService:
                 "aliases": aliases,
             }
 
-            self.agent_repository.upsert_agent(agent)
+            self.agent_repository.upsert_agent(context, agent)
 
             if existing_agent_id:
                 updated += 1
             else:
                 created += 1
 
-        return {
+        result = {
             "created": created,
             "updated": updated
         }
+        self.audit(
+            context,
+            "AGENT_DISCOVERY_COMPLETED",
+            "agent_discovery",
+            "survey_batch",
+            result,
+        )
+        return result

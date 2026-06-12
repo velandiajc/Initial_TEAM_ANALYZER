@@ -2,6 +2,7 @@ from typing import Any
 
 from app.core.audit import AuditEvent
 from app.core.tenant_context import TenantContext, require_tenant_context
+from app.services.pci_redaction_service import PCIRedactionService
 
 
 class KPIAuditService:
@@ -17,12 +18,13 @@ class KPIAuditService:
         metadata: dict[str, Any] | None = None
     ) -> AuditEvent:
         context = require_tenant_context(context)
+        pci_service = PCIRedactionService()
         event = AuditEvent(
-            action=action,
+            action=pci_service.redact(action),
             tenant_id=context.tenant_id,
             actor_user_id=context.user_id,
-            entity_type=entity_type,
-            entity_id=entity_id,
+            entity_type=pci_service.redact(entity_type),
+            entity_id=pci_service.redact(entity_id),
             metadata=sanitize_audit_metadata(metadata or {}),
         )
 
@@ -85,6 +87,9 @@ def sanitize_audit_metadata(value):
             sanitize_audit_metadata(item)
             for item in value
         ]
+
+    if isinstance(value, str):
+        return PCIRedactionService().redact(value)
 
     return value
 
