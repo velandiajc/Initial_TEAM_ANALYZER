@@ -16,8 +16,8 @@ AI feature, deployment target, or runtime dependency.
 
 `feature/operational-impact-framework`
 
-The branch has not been merged, committed, pushed, or opened as a pull request.
-Local PR publication is blocked because GitHub CLI is not installed.
+The branch is committed and pushed in pull request #24. It has not been
+merged.
 
 ## Files Created
 
@@ -135,7 +135,7 @@ security model was introduced.
 
 ## Tests Added
 
-Sprint 6 adds 39 focused tests covering:
+Sprint 6 adds 40 focused tests covering:
 
 - Required governance fields, weights, thresholds, and versions.
 - Creator/approver separation.
@@ -151,8 +151,8 @@ Sprint 6 adds 39 focused tests covering:
 
 ## Validation Results
 
-- Focused Sprint 6 suite: 39 passed.
-- Full regression suite: 317 passed in 331.95 seconds.
+- Focused Sprint 6 suite: 40 passed.
+- Full release-gate regression suite: 318 passed in 299.92 seconds.
 - Existing Sprint 1-5.1 regression coverage: 278 passed within the full suite.
 - Python compilation: passed.
 - SQLite schema smoke test: passed.
@@ -185,8 +185,6 @@ Architecture, security, data-governance, engineering, and DevOps alignment:
 - Security must review tenant-denial auditing and immutable SQLite triggers.
 - QA must independently rerun the complete regression suite.
 - DevOps must confirm the remote security workflow on the pull request.
-- Install and authenticate GitHub CLI, then commit, push, and open the draft
-  pull request from the validated feature branch.
 - The Executive Board must approve before merge.
 
 ## Recommendation

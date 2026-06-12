@@ -173,10 +173,16 @@ def test_missing_lineage_or_versions_cannot_be_persisted(tmp_path):
     for source, field_name, message in (
         (impact, "lineage_id", "lineage_id"),
         (impact, "impact_definition_version", "impact_definition_version"),
+        (impact, "impact_factor_versions", "impact_factor_versions"),
+        (impact, "threshold_versions", "threshold_versions"),
+        (impact, "weight_snapshots", "weight_snapshots"),
+        (impact, "factor_score_snapshots", "factor_score_snapshots"),
         (priority, "risk_rule_version", "risk_rule_version"),
+        (priority, "risk_definition_version", "risk_definition_version"),
     ):
         original = getattr(source, field_name)
-        object.__setattr__(source, field_name, "")
+        invalid_value = {} if isinstance(original, dict) else ""
+        object.__setattr__(source, field_name, invalid_value)
         repository = (
             stack["repositories"]["assessments"]
             if hasattr(source, "impact_factor_ids")
@@ -187,6 +193,74 @@ def test_missing_lineage_or_versions_cannot_be_persisted(tmp_path):
                 repository.save(manager, source)
         finally:
             object.__setattr__(source, field_name, original)
+
+    original_kpi_ids = impact.source_kpi_result_ids
+    original_risk_ids = impact.source_risk_result_ids
+    object.__setattr__(impact, "source_kpi_result_ids", ())
+    object.__setattr__(impact, "source_risk_result_ids", ())
+    try:
+        with pytest.raises(ValueError, match="Result reference"):
+            stack["repositories"]["assessments"].save(manager, impact)
+    finally:
+        object.__setattr__(
+            impact,
+            "source_kpi_result_ids",
+            original_kpi_ids,
+        )
+        object.__setattr__(
+            impact,
+            "source_risk_result_ids",
+            original_risk_ids,
+        )
+
+    original_versions = impact.impact_factor_versions
+    partial_versions = dict(original_versions)
+    partial_versions.pop(next(iter(partial_versions)))
+    object.__setattr__(
+        impact,
+        "impact_factor_versions",
+        partial_versions,
+    )
+    try:
+        with pytest.raises(ValueError, match="every impact factor"):
+            stack["repositories"]["assessments"].save(manager, impact)
+    finally:
+        object.__setattr__(
+            impact,
+            "impact_factor_versions",
+            original_versions,
+        )
+
+
+def test_incomplete_source_lineage_is_rejected_and_audited(tmp_path):
+    stack, baseline, _ = prepare_stack(tmp_path)
+    manager = context(role="performance_manager", user_id="manager-1")
+    with stack["database"].connect() as conn:
+        conn.execute(
+            """
+            UPDATE kpi_calculation_results
+            SET metadata_json = '{}'
+            WHERE tenant_id = ? AND result_id = ?
+            """,
+            (manager.tenant_id, baseline[0].result_id),
+        )
+
+    with pytest.raises(ValueError, match="lineage_id"):
+        stack["services"]["assessments"].calculate_impact(
+            manager,
+            impact_request(baseline),
+        )
+    events = stack["audit_repository"].list_events(manager)
+    rejected = [
+        event
+        for event in events
+        if event.action == "OPERATIONAL_IMPACT_REJECTED"
+    ]
+
+    assert rejected
+    assert rejected[-1].metadata == {
+        "reason": "KPI Result lineage_id is required."
+    }
 
 
 def test_priority_rejects_inaccessible_cross_tenant_inputs(tmp_path):
@@ -280,7 +354,12 @@ def test_audit_metadata_suppresses_raw_sensitive_content():
         "recording_url": "secure://recording",
         "customer_comment": "private",
         "coaching_note": "private",
+        "private_coaching_note": "private",
+        "manager_note": "private",
+        "leadership_note": "private",
+        "pan": "4111111111111111",
         "cvv": "123",
+        "cardholder_data": "private",
     })
 
     assert sanitized == {"lineage_id": "safe"}

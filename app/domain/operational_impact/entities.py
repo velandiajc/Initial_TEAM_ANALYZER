@@ -229,6 +229,25 @@ class OperationalImpactAssessment:
         require_items(self.impact_factor_ids, "impact_factor_ids")
         require_items(self.impact_factor_versions, "impact_factor_versions")
         require_items(self.threshold_versions, "threshold_versions")
+        require_items(self.weight_snapshots, "weight_snapshots")
+        require_items(self.factor_score_snapshots, "factor_score_snapshots")
+        factor_ids = set(self.impact_factor_ids)
+        if len(factor_ids) != len(self.impact_factor_ids):
+            raise ValueError("impact_factor_ids must be unique.")
+        for name in (
+            "impact_factor_versions",
+            "threshold_versions",
+            "weight_snapshots",
+            "factor_score_snapshots",
+        ):
+            if set(getattr(self, name)) != factor_ids:
+                raise ValueError(
+                    f"{name} must contain every impact factor reference."
+                )
+        if not self.source_kpi_result_ids and not self.source_risk_result_ids:
+            raise ValueError(
+                "Governed KPI or Risk Result reference is required."
+            )
         object.__setattr__(
             self,
             "impact_score",

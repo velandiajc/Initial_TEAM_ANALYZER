@@ -449,8 +449,30 @@ class SQLiteOperationalImpactAssessmentRepository:
             (assessment.impact_factor_ids, "impact_factor_ids"),
             (assessment.impact_factor_versions, "impact_factor_versions"),
             (assessment.threshold_versions, "threshold_versions"),
+            (assessment.weight_snapshots, "weight_snapshots"),
+            (assessment.factor_score_snapshots, "factor_score_snapshots"),
         ):
             _required(value, name)
+        factor_ids = set(assessment.impact_factor_ids)
+        for value, name in (
+            (assessment.impact_factor_versions, "impact_factor_versions"),
+            (assessment.threshold_versions, "threshold_versions"),
+            (assessment.weight_snapshots, "weight_snapshots"),
+            (assessment.factor_score_snapshots, "factor_score_snapshots"),
+        ):
+            if set(value) != factor_ids:
+                raise ValueError(
+                    f"{name} must contain every impact factor reference "
+                    "for persistence."
+                )
+        if (
+            not assessment.source_kpi_result_ids
+            and not assessment.source_risk_result_ids
+        ):
+            raise ValueError(
+                "Governed KPI or Risk Result reference is required "
+                "for persistence."
+            )
         with self.database_service.connect() as conn:
             conn.execute("""
                 INSERT INTO operational_impact_assessments (

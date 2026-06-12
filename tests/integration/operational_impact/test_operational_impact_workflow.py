@@ -1,4 +1,5 @@
 import sqlite3
+from dataclasses import FrozenInstanceError
 
 import pytest
 
@@ -48,6 +49,10 @@ def test_governed_impact_and_priority_workflow(tmp_path):
     assert persisted_priority.priority_level.value == "MONITOR"
     assert persisted_priority.risk_definition_version == "1.0"
     assert persisted_priority.risk_rule_version == "1.0"
+    with pytest.raises(FrozenInstanceError):
+        persisted_impact.impact_score = 99
+    with pytest.raises(FrozenInstanceError):
+        persisted_priority.priority_score = 99
     with pytest.raises(TypeError):
         persisted_impact.weight_snapshots["factor-survey-volume"] = 0.99
 
@@ -98,6 +103,10 @@ def test_calculation_and_view_actions_are_audited(tmp_path):
 
     assert "OPERATIONAL_IMPACT_CALCULATED" in actions
     assert "OPERATIONAL_IMPACT_VIEWED" in actions
+    assert "OPERATIONAL_IMPACT_DEFINITION_CREATED" in actions
+    assert "OPERATIONAL_IMPACT_DEFINITION_APPROVED" in actions
+    assert "OPERATIONAL_IMPACT_FACTOR_CREATED" in actions
+    assert "OPERATIONAL_IMPACT_FACTOR_APPROVED" in actions
     assert "RISK_PRIORITY_CALCULATED" in actions
     assert "RISK_PRIORITY_VIEWED" in actions
 
@@ -158,6 +167,11 @@ def test_material_change_creates_timeline_event_and_noise_does_not(tmp_path):
     assert len(timeline) == 1
     assert timeline[0].impact_level_snapshot.value == "HIGH"
     assert timeline[0].priority_level_snapshot.value == "ESCALATE"
+    actions = {
+        event.action
+        for event in stack["audit_repository"].list_events(manager)
+    }
+    assert "OPERATIONAL_IMPACT_TIMELINE_EVENT_CREATED" in actions
 
 
 def test_impact_and_priority_history_is_database_immutable(tmp_path):
@@ -187,6 +201,15 @@ def test_impact_and_priority_history_is_database_immutable(tmp_path):
             conn.execute(
                 """
                 DELETE FROM risk_priority_assessments
+                WHERE tenant_id = ? AND priority_assessment_id = ?
+                """,
+                (manager.tenant_id, priority.priority_assessment_id),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            conn.execute(
+                """
+                UPDATE risk_priority_assessments
+                SET priority_score = 99
                 WHERE tenant_id = ? AND priority_assessment_id = ?
                 """,
                 (manager.tenant_id, priority.priority_assessment_id),
