@@ -53,7 +53,10 @@ class KPIAuditService:
 SENSITIVE_METADATA_KEY_PARTS = [
     "api_key",
     "auth",
+    "cardholder",
+    "coaching_note",
     "comment",
+    "cvv",
     "customer_email",
     "customer_name",
     "customer_phone",
@@ -61,12 +64,18 @@ SENSITIVE_METADATA_KEY_PARTS = [
     "employee_name",
     "employee_phone",
     "full_payload",
+    "leadership_note",
+    "manager_note",
+    "pan",
     "password",
     "payload",
+    "private_note",
+    "recording",
     "raw",
     "secret",
     "ssn",
     "token",
+    "transcript",
 ]
 
 
