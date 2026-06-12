@@ -49,6 +49,19 @@ class CoachingPermission(Enum):
     VIEW_PRIVATE_COACHING_NOTE = "view_private_coaching_note"
 
 
+class OperationalImpactPermission(Enum):
+    CREATE_OPERATIONAL_IMPACT_DEFINITION = (
+        "create_operational_impact_definition"
+    )
+    APPROVE_OPERATIONAL_IMPACT_DEFINITION = (
+        "approve_operational_impact_definition"
+    )
+    VIEW_OPERATIONAL_IMPACT = "view_operational_impact"
+    CALCULATE_OPERATIONAL_IMPACT = "calculate_operational_impact"
+    VIEW_RISK_PRIORITY = "view_risk_priority"
+    CALCULATE_RISK_PRIORITY = "calculate_risk_priority"
+
+
 class RBACService:
     ROLE_PERMISSIONS = {
         GovernanceRole.GOVERNANCE_ADMIN.value: {
@@ -57,6 +70,9 @@ class RBACService:
         } | {
             permission.value
             for permission in CoachingPermission
+        } | {
+            permission.value
+            for permission in OperationalImpactPermission
         },
         GovernanceRole.KPI_OWNER.value: {
             KPIPermission.REGISTER_KPI.value,
@@ -75,6 +91,11 @@ class RBACService:
             KPIPermission.VIEW_AGENT_RECORDS.value,
             KPIPermission.INGEST_SURVEYS.value,
             KPIPermission.VIEW_SURVEYS.value,
+            OperationalImpactPermission.CREATE_OPERATIONAL_IMPACT_DEFINITION.value,
+            OperationalImpactPermission.VIEW_OPERATIONAL_IMPACT.value,
+            OperationalImpactPermission.CALCULATE_OPERATIONAL_IMPACT.value,
+            OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
+            OperationalImpactPermission.CALCULATE_RISK_PRIORITY.value,
         },
         GovernanceRole.KPI_STEWARD.value: {
             KPIPermission.WRITE_THRESHOLD.value,
@@ -86,6 +107,10 @@ class RBACService:
             KPIPermission.VIEW_AGENT_RECORDS.value,
             KPIPermission.INGEST_SURVEYS.value,
             KPIPermission.VIEW_SURVEYS.value,
+            OperationalImpactPermission.CREATE_OPERATIONAL_IMPACT_DEFINITION.value,
+            OperationalImpactPermission.VIEW_OPERATIONAL_IMPACT.value,
+            OperationalImpactPermission.CALCULATE_OPERATIONAL_IMPACT.value,
+            OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
         },
         GovernanceRole.KPI_APPROVER.value: {
             KPIPermission.APPROVE_FORMULA.value,
@@ -97,6 +122,10 @@ class RBACService:
             KPIPermission.VIEW_RISK_RESULTS.value,
             KPIPermission.VIEW_AGENT_RECORDS.value,
             KPIPermission.VIEW_SURVEYS.value,
+            OperationalImpactPermission.APPROVE_OPERATIONAL_IMPACT_DEFINITION.value,
+            OperationalImpactPermission.VIEW_OPERATIONAL_IMPACT.value,
+            OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
+            OperationalImpactPermission.CALCULATE_RISK_PRIORITY.value,
         },
         GovernanceRole.PERFORMANCE_COACH.value: {
             CoachingPermission.VIEW_COACHING_SESSION.value,
@@ -106,22 +135,38 @@ class RBACService:
             CoachingPermission.UPDATE_COMMITMENT.value,
             CoachingPermission.CREATE_FOLLOWUP.value,
             CoachingPermission.VIEW_PERFORMANCE_TIMELINE.value,
+            OperationalImpactPermission.VIEW_OPERATIONAL_IMPACT.value,
+            OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
         },
         GovernanceRole.PERFORMANCE_MANAGER.value: {
             permission.value
             for permission in CoachingPermission
+        } | {
+            KPIPermission.VIEW_KPI_RESULTS.value,
+            KPIPermission.VIEW_RISK_RESULTS.value,
+            OperationalImpactPermission.VIEW_OPERATIONAL_IMPACT.value,
+            OperationalImpactPermission.CALCULATE_OPERATIONAL_IMPACT.value,
+            OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
+            OperationalImpactPermission.CALCULATE_RISK_PRIORITY.value,
         },
         GovernanceRole.LEADERSHIP.value: {
             CoachingPermission.VIEW_COACHING_SESSION.value,
             CoachingPermission.VIEW_PERFORMANCE_TIMELINE.value,
             CoachingPermission.VIEW_PRIVATE_COACHING_NOTE.value,
+            OperationalImpactPermission.VIEW_OPERATIONAL_IMPACT.value,
+            OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
         },
     }
 
     def can(
         self,
         context: TenantContext | None,
-        permission: KPIPermission | CoachingPermission | str
+        permission: (
+            KPIPermission
+            | CoachingPermission
+            | OperationalImpactPermission
+            | str
+        )
     ) -> bool:
         context = require_tenant_context(context)
         permission_value = self._permission_value(permission)
@@ -134,7 +179,12 @@ class RBACService:
     def require_permission(
         self,
         context: TenantContext | None,
-        permission: KPIPermission | CoachingPermission | str
+        permission: (
+            KPIPermission
+            | CoachingPermission
+            | OperationalImpactPermission
+            | str
+        )
     ) -> None:
         if not self.can(context, permission):
             raise PermissionError(
@@ -191,9 +241,21 @@ class RBACService:
 
     def _permission_value(
         self,
-        permission: KPIPermission | CoachingPermission | str
+        permission: (
+            KPIPermission
+            | CoachingPermission
+            | OperationalImpactPermission
+            | str
+        )
     ) -> str:
-        if isinstance(permission, (KPIPermission, CoachingPermission)):
+        if isinstance(
+            permission,
+            (
+                KPIPermission,
+                CoachingPermission,
+                OperationalImpactPermission,
+            ),
+        ):
             return permission.value
 
         return str(permission).strip().lower()

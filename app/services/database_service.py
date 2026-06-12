@@ -327,6 +327,150 @@ class DatabaseService:
             )
 
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS operational_impact_definitions (
+                    tenant_id TEXT NOT NULL,
+                    impact_definition_id TEXT NOT NULL,
+                    impact_definition_version TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    impact_category TEXT NOT NULL,
+                    owner TEXT NOT NULL,
+                    steward TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    effective_date TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    approved_by TEXT,
+                    approved_at TEXT,
+                    PRIMARY KEY (
+                        tenant_id,
+                        impact_definition_id,
+                        impact_definition_version
+                    )
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS operational_impact_factors (
+                    tenant_id TEXT NOT NULL,
+                    impact_factor_id TEXT NOT NULL,
+                    impact_factor_version TEXT NOT NULL,
+                    impact_definition_id TEXT NOT NULL,
+                    impact_definition_version TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    source_reference TEXT NOT NULL,
+                    weight REAL NOT NULL,
+                    direction TEXT NOT NULL,
+                    threshold_version TEXT NOT NULL,
+                    threshold_min REAL NOT NULL,
+                    threshold_max REAL NOT NULL,
+                    owner TEXT NOT NULL,
+                    steward TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    effective_date TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    approved_by TEXT,
+                    approved_at TEXT,
+                    PRIMARY KEY (
+                        tenant_id,
+                        impact_factor_id,
+                        impact_factor_version
+                    ),
+                    FOREIGN KEY (
+                        tenant_id,
+                        impact_definition_id,
+                        impact_definition_version
+                    ) REFERENCES operational_impact_definitions (
+                        tenant_id,
+                        impact_definition_id,
+                        impact_definition_version
+                    )
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS operational_impact_assessments (
+                    tenant_id TEXT NOT NULL,
+                    impact_assessment_id TEXT NOT NULL,
+                    impact_definition_id TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    assessment_period_start TEXT NOT NULL,
+                    assessment_period_end TEXT NOT NULL,
+                    impact_score REAL NOT NULL,
+                    impact_level TEXT NOT NULL,
+                    impact_definition_version TEXT NOT NULL,
+                    impact_factor_ids_json TEXT NOT NULL,
+                    impact_factor_versions_json TEXT NOT NULL,
+                    threshold_versions_json TEXT NOT NULL,
+                    weight_snapshots_json TEXT NOT NULL,
+                    factor_score_snapshots_json TEXT NOT NULL,
+                    source_kpi_result_ids_json TEXT NOT NULL DEFAULT '[]',
+                    source_risk_result_ids_json TEXT NOT NULL DEFAULT '[]',
+                    lineage_id TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, impact_assessment_id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS risk_priority_assessments (
+                    tenant_id TEXT NOT NULL,
+                    priority_assessment_id TEXT NOT NULL,
+                    risk_result_id TEXT NOT NULL,
+                    risk_definition_version TEXT NOT NULL,
+                    risk_rule_version TEXT NOT NULL,
+                    impact_assessment_id TEXT NOT NULL,
+                    impact_definition_version TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    risk_score_snapshot REAL NOT NULL,
+                    impact_score_snapshot REAL NOT NULL,
+                    priority_score REAL NOT NULL,
+                    priority_level TEXT NOT NULL,
+                    priority_reason TEXT NOT NULL,
+                    lineage_id TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, priority_assessment_id),
+                    FOREIGN KEY (tenant_id, impact_assessment_id)
+                        REFERENCES operational_impact_assessments (
+                            tenant_id,
+                            impact_assessment_id
+                        )
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS operational_impact_timeline_events (
+                    tenant_id TEXT NOT NULL,
+                    timeline_event_id TEXT NOT NULL,
+                    employee_id TEXT NOT NULL,
+                    impact_assessment_id TEXT NOT NULL,
+                    priority_assessment_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    material_change_reason TEXT NOT NULL,
+                    impact_level_snapshot TEXT NOT NULL,
+                    priority_level_snapshot TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, timeline_event_id),
+                    UNIQUE (
+                        tenant_id,
+                        priority_assessment_id,
+                        event_type
+                    )
+                )
+            """)
+
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS performance_opportunities (
                     tenant_id TEXT NOT NULL,
                     opportunity_id TEXT NOT NULL,
@@ -475,6 +619,7 @@ class DatabaseService:
             """)
 
             self._create_performance_history_triggers(cursor)
+            self._create_operational_impact_history_triggers(cursor)
             self._create_pci_persistence_triggers(cursor)
 
             conn.commit()
@@ -820,6 +965,91 @@ class DatabaseService:
                 SELECT RAISE(
                     ABORT,
                     'Performance timeline events are immutable.'
+                );
+            END
+        """)
+
+    def _create_operational_impact_history_triggers(self, cursor):
+        immutable_tables = [
+            "operational_impact_assessments",
+            "risk_priority_assessments",
+            "operational_impact_timeline_events",
+        ]
+        protected_tables = [
+            "operational_impact_definitions",
+            "operational_impact_factors",
+            *immutable_tables,
+        ]
+        for table_name in protected_tables:
+            cursor.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS no_delete_{table_name}
+                BEFORE DELETE ON {table_name}
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'Operational Impact records cannot be deleted.'
+                    );
+                END
+            """)
+        for table_name in immutable_tables:
+            cursor.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS immutable_{table_name}
+                BEFORE UPDATE ON {table_name}
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'Operational Impact history is immutable.'
+                    );
+                END
+            """)
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS immutable_operational_impact_definition
+            BEFORE UPDATE ON operational_impact_definitions
+            WHEN OLD.impact_definition_id IS NOT NEW.impact_definition_id
+              OR OLD.impact_definition_version
+                    IS NOT NEW.impact_definition_version
+              OR OLD.tenant_id IS NOT NEW.tenant_id
+              OR OLD.name IS NOT NEW.name
+              OR OLD.description IS NOT NEW.description
+              OR OLD.impact_category IS NOT NEW.impact_category
+              OR OLD.owner IS NOT NEW.owner
+              OR OLD.steward IS NOT NEW.steward
+              OR OLD.effective_date IS NOT NEW.effective_date
+              OR OLD.created_by IS NOT NEW.created_by
+              OR OLD.created_at IS NOT NEW.created_at
+            BEGIN
+                SELECT RAISE(
+                    ABORT,
+                    'Operational Impact definition versions are immutable.'
+                );
+            END
+        """)
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS immutable_operational_impact_factor
+            BEFORE UPDATE ON operational_impact_factors
+            WHEN OLD.impact_factor_id IS NOT NEW.impact_factor_id
+              OR OLD.impact_factor_version IS NOT NEW.impact_factor_version
+              OR OLD.tenant_id IS NOT NEW.tenant_id
+              OR OLD.impact_definition_id IS NOT NEW.impact_definition_id
+              OR OLD.impact_definition_version
+                    IS NOT NEW.impact_definition_version
+              OR OLD.name IS NOT NEW.name
+              OR OLD.description IS NOT NEW.description
+              OR OLD.source_reference IS NOT NEW.source_reference
+              OR OLD.weight IS NOT NEW.weight
+              OR OLD.direction IS NOT NEW.direction
+              OR OLD.threshold_version IS NOT NEW.threshold_version
+              OR OLD.threshold_min IS NOT NEW.threshold_min
+              OR OLD.threshold_max IS NOT NEW.threshold_max
+              OR OLD.owner IS NOT NEW.owner
+              OR OLD.steward IS NOT NEW.steward
+              OR OLD.effective_date IS NOT NEW.effective_date
+              OR OLD.created_by IS NOT NEW.created_by
+              OR OLD.created_at IS NOT NEW.created_at
+            BEGIN
+                SELECT RAISE(
+                    ABORT,
+                    'Operational Impact factor versions are immutable.'
                 );
             END
         """)
