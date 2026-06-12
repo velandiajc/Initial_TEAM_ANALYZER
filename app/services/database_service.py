@@ -1,58 +1,37 @@
 import sqlite3
 from pathlib import Path
 
+from app.services.pci_redaction_service import PCIRedactionService
+
 
 class DatabaseService:
-    def __init__(self, db_path="Data/database/team_analyzer.db"):
+    def __init__(
+        self,
+        db_path="Data/database/team_analyzer.db",
+        legacy_tenant_id="legacy-local",
+    ):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.legacy_tenant_id = str(legacy_tenant_id).strip()
+        if not self.legacy_tenant_id:
+            raise ValueError("legacy_tenant_id is required.")
 
     def connect(self):
         connection = sqlite3.connect(self.db_path)
+        pci_service = PCIRedactionService()
+        connection.create_function(
+            "pci_persistence_safe",
+            1,
+            lambda value: int(pci_service.is_persistence_safe(value)),
+        )
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
     def initialize(self):
         with self.connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
             cursor = conn.cursor()
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS agents (
-                    agent_id TEXT PRIMARY KEY,
-                    employee_id TEXT,
-                    name TEXT,
-                    email TEXT,
-                    nice_name TEXT,
-                    cxone_name TEXT,
-                    status TEXT,
-                    supervisor TEXT
-                )
-            """)
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS agent_aliases (
-                    alias TEXT PRIMARY KEY,
-                    agent_id TEXT,
-                    FOREIGN KEY(agent_id) REFERENCES agents(agent_id)
-                )
-            """)
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS surveys (
-                    contact_id TEXT PRIMARY KEY,
-                    agent_id TEXT,
-                    agent_name TEXT,
-                    score REAL,
-                    csat REAL,
-                    comment TEXT,
-                    survey_date TEXT,
-                    brand TEXT,
-                    media_type TEXT,
-                    top_reason TEXT,
-                    disposition TEXT,
-                    FOREIGN KEY(agent_id) REFERENCES agents(agent_id)
-                )
-            """)
+            self._initialize_legacy_tables(cursor)
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS kpi_definitions (
@@ -150,6 +129,7 @@ class DatabaseService:
                     PRIMARY KEY (tenant_id, event_id)
                 )
             """)
+            self._create_audit_history_triggers(cursor)
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS kpi_calculation_results (
@@ -495,8 +475,197 @@ class DatabaseService:
             """)
 
             self._create_performance_history_triggers(cursor)
+            self._create_pci_persistence_triggers(cursor)
 
             conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _initialize_legacy_tables(self, cursor):
+        if (
+            self._table_exists(cursor, "agents")
+            and not self._column_exists(cursor, "agents", "tenant_id")
+        ):
+            self._migrate_legacy_tables(cursor)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agents (
+                tenant_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                employee_id TEXT,
+                name TEXT,
+                email TEXT,
+                nice_name TEXT,
+                cxone_name TEXT,
+                status TEXT,
+                supervisor TEXT,
+                PRIMARY KEY (tenant_id, agent_id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_aliases (
+                tenant_id TEXT NOT NULL,
+                alias TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                PRIMARY KEY (tenant_id, alias),
+                FOREIGN KEY (tenant_id, agent_id)
+                    REFERENCES agents(tenant_id, agent_id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS surveys (
+                tenant_id TEXT NOT NULL,
+                contact_id TEXT NOT NULL,
+                agent_id TEXT,
+                agent_name TEXT,
+                score REAL,
+                csat REAL,
+                comment TEXT,
+                survey_date TEXT,
+                brand TEXT,
+                media_type TEXT,
+                top_reason TEXT,
+                disposition TEXT,
+                PRIMARY KEY (tenant_id, contact_id),
+                FOREIGN KEY (tenant_id, agent_id)
+                    REFERENCES agents(tenant_id, agent_id)
+            )
+        """)
+
+    def _migrate_legacy_tables(self, cursor):
+        legacy_tables = [
+            table_name
+            for table_name in ("surveys", "agent_aliases", "agents")
+            if self._table_exists(cursor, table_name)
+        ]
+        for table_name in legacy_tables:
+            cursor.execute(
+                f"ALTER TABLE {table_name} "
+                f"RENAME TO {table_name}_pre_tenant"
+            )
+
+        self._initialize_legacy_tables(cursor)
+
+        cursor.execute("""
+            INSERT INTO agents (
+                tenant_id,
+                agent_id,
+                employee_id,
+                name,
+                email,
+                nice_name,
+                cxone_name,
+                status,
+                supervisor
+            )
+            SELECT ?, agent_id, employee_id, name, email, nice_name,
+                   cxone_name, status, supervisor
+            FROM agents_pre_tenant
+        """, (self.legacy_tenant_id,))
+
+        if "agent_aliases" in legacy_tables:
+            cursor.execute("""
+                INSERT INTO agent_aliases (tenant_id, alias, agent_id)
+                SELECT ?, alias, agent_id
+                FROM agent_aliases_pre_tenant
+            """, (self.legacy_tenant_id,))
+
+        if "surveys" in legacy_tables:
+            cursor.execute("""
+                INSERT INTO surveys (
+                    tenant_id,
+                    contact_id,
+                    agent_id,
+                    agent_name,
+                    score,
+                    csat,
+                    comment,
+                    survey_date,
+                    brand,
+                    media_type,
+                    top_reason,
+                    disposition
+                )
+                SELECT ?, contact_id, agent_id, agent_name, score, csat,
+                       comment, survey_date, brand, media_type, top_reason,
+                       disposition
+                FROM surveys_pre_tenant
+            """, (self.legacy_tenant_id,))
+
+        for table_name in legacy_tables:
+            cursor.execute(f"DROP TABLE {table_name}_pre_tenant")
+
+    def _table_exists(self, cursor, table_name):
+        cursor.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = ?
+            """,
+            (table_name,),
+        )
+        return cursor.fetchone() is not None
+
+    def _column_exists(self, cursor, table_name, column_name):
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        return any(row[1] == column_name for row in cursor.fetchall())
+
+    def _create_audit_history_triggers(self, cursor):
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS immutable_kpi_audit_updates
+            BEFORE UPDATE ON kpi_audit_events
+            BEGIN
+                SELECT RAISE(ABORT, 'Audit events are append-only.');
+            END
+        """)
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS immutable_kpi_audit_deletes
+            BEFORE DELETE ON kpi_audit_events
+            BEGIN
+                SELECT RAISE(ABORT, 'Audit events are append-only.');
+            END
+        """)
+
+    def _create_pci_persistence_triggers(self, cursor):
+        cursor.execute("""
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name NOT LIKE 'sqlite_%'
+            ORDER BY name
+        """)
+        table_names = [row[0] for row in cursor.fetchall()]
+
+        for table_name in table_names:
+            cursor.execute(f'PRAGMA table_info("{table_name}")')
+            text_columns = [
+                row[1]
+                for row in cursor.fetchall()
+                if "TEXT" in str(row[2]).upper()
+            ]
+            if not text_columns:
+                continue
+
+            unsafe_condition = " OR ".join(
+                f'pci_persistence_safe(NEW."{column_name}") = 0'
+                for column_name in text_columns
+            )
+            for operation in ("INSERT", "UPDATE"):
+                trigger_name = (
+                    f"pci_prevent_{operation.lower()}_{table_name}"
+                )
+                cursor.execute(f"""
+                    CREATE TRIGGER IF NOT EXISTS "{trigger_name}"
+                    BEFORE {operation} ON "{table_name}"
+                    WHEN {unsafe_condition}
+                    BEGIN
+                        SELECT RAISE(
+                            ABORT,
+                            'PCI data persistence prohibited.'
+                        );
+                    END
+                """)
 
     def _ensure_column(
         self,

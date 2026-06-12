@@ -7,6 +7,8 @@ import hashlib
 import re
 from pathlib import Path
 
+from app.services.pci_redaction_service import PCIRedactionService
+
 
 DEFAULT_RAW_ROOT = Path("data/raw/evidence_samples")
 DEFAULT_OUTPUT_ROOT = Path("data/processed/evidence")
@@ -149,7 +151,9 @@ def write_manifest(
     with manifest_path.open("w", newline="", encoding="utf-8") as manifest_file:
         writer = csv.DictWriter(manifest_file, fieldnames=MANIFEST_FIELDS)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(
+            PCIRedactionService().redact_structure(rows)
+        )
 
     return manifest_path
 
@@ -299,8 +303,13 @@ def local_file_reference(path: Path, raw_root: Path) -> str:
 
 
 def markdown_file_name(row: dict[str, str]) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", Path(row["file_name"]).stem).strip("-")
-    digest = hashlib.sha1(row["local_file_reference"].encode("utf-8")).hexdigest()[:8]
+    safe_stem = PCIRedactionService().redact_filename_component(
+        Path(row["file_name"]).stem
+    )
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", safe_stem).strip("-")
+    digest = hashlib.sha256(
+        row["local_file_reference"].encode("utf-8")
+    ).hexdigest()[:8]
     return f"{row['evidence_type']}-{slug.lower()}-{digest}.md"
 
 
@@ -315,7 +324,7 @@ def render_markdown_metadata(row: dict[str, str]) -> str:
     for field in MANIFEST_FIELDS:
         lines.append(f"- **{field}:** {row[field]}")
     lines.append("")
-    return "\n".join(lines)
+    return PCIRedactionService().redact("\n".join(lines))
 
 
 def main() -> int:

@@ -1,12 +1,15 @@
 from collections import defaultdict, Counter
 from pathlib import Path
 
+from app.services.pci_redaction_service import PCIRedactionService
+
 
 class SurveyInsightService:
 
     def __init__(self, surveys, agent_registry):
         self.surveys = surveys
         self.agent_registry = agent_registry
+        self.pci_redaction_service = PCIRedactionService()
 
     def _csat(self, osat):
         try:
@@ -23,7 +26,7 @@ class SurveyInsightService:
         if comment.lower() in ["nan", "none", ""]:
             return ""
 
-        return comment
+        return self.pci_redaction_service.redact(comment)
 
     def _classify(self, csat):
         if csat >= 90:
@@ -335,9 +338,7 @@ class SurveyInsightService:
 
         lines.append("")
 
-        output_path.write_text(
-            "\n".join(lines),
-            encoding="utf-8"
-        )
+        report = self.pci_redaction_service.redact("\n".join(lines))
+        output_path.write_text(report, encoding="utf-8")
 
         return output_path

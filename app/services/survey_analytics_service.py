@@ -2,12 +2,15 @@ import csv
 from collections import defaultdict
 from pathlib import Path
 
+from app.services.pci_redaction_service import PCIRedactionService
+
 
 class SurveyAnalyticsService:
 
     def __init__(self, surveys, agent_registry):
         self.surveys = surveys
         self.agent_registry = agent_registry
+        self.pci_redaction_service = PCIRedactionService()
 
     def _classify_score(self, score):
         try:
@@ -74,7 +77,7 @@ class SurveyAnalyticsService:
             ]
 
             if comments:
-                latest_comment = comments[-1]
+                latest_comment = self.pci_redaction_service.redact(comments[-1])
 
             summary.append(
                 {
@@ -105,7 +108,9 @@ class SurveyAnalyticsService:
             exist_ok=True
         )
 
-        summary = self.build_agent_summary()
+        summary = self.pci_redaction_service.redact_structure(
+            self.build_agent_summary()
+        )
 
         fieldnames = [
             "agent_id",
@@ -132,4 +137,3 @@ class SurveyAnalyticsService:
             writer.writerows(summary)
 
         return output_path
-    

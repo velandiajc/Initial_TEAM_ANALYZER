@@ -11,6 +11,7 @@ from app.services.workbook_entity_discovery_service import (
     WorkbookEntityDiscoveryService,
 )
 from app.services.workbook_ingestion_service import WorkbookIngestionService
+from app.services.pci_redaction_service import PCIRedactionService
 
 
 class AgentScorecardService:
@@ -48,6 +49,7 @@ class AgentScorecardService:
         self.entity_discovery_service = (
             entity_discovery_service or WorkbookEntityDiscoveryService()
         )
+        self.pci_redaction_service = PCIRedactionService()
 
     def build_report(
         self,
@@ -394,7 +396,9 @@ class AgentScorecardService:
         else:
             text = str(value).strip()
 
-        text = self._clean_mojibake(text)
+        text = self.pci_redaction_service.redact(
+            self._clean_mojibake(text)
+        )
 
         if field_name in {
             "csat_mtd",

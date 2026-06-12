@@ -2,6 +2,8 @@ from pathlib import Path
 import re
 import json
 
+from app.services.pci_redaction_service import PCIRedactionService
+
 TRANSCRIPTS_FOLDER = Path("Data/CALLS/TRANSCRIPTS")
 OUTPUT_FOLDER = Path("Data/CALLS/ANALYZED")
 OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
@@ -53,7 +55,8 @@ RUBRIC = {
 
 
 def load_transcript(path):
-    return path.read_text(encoding="utf-8", errors="ignore")
+    raw = path.read_text(encoding="utf-8", errors="ignore")
+    return PCIRedactionService().redact(raw)
 
 
 def clean_text(text):
@@ -165,6 +168,7 @@ def generate_coaching_summary(score, risk, opportunities):
 
 
 def generate_markdown(transcript_file):
+    pci_service = PCIRedactionService()
     raw = load_transcript(transcript_file)
     text = clean_text(raw)
 
@@ -242,22 +246,29 @@ def generate_markdown(transcript_file):
     lines.append("")
     lines.append(raw)
 
-    output_file = OUTPUT_FOLDER / f"{transcript_file.stem}_qa_analysis.md"
-    output_file.write_text("\n".join(lines), encoding="utf-8")
+    safe_stem = pci_service.redact_filename_component(transcript_file.stem)
+    output_file = OUTPUT_FOLDER / f"{safe_stem}_qa_analysis.md"
+    output_file.write_text(
+        pci_service.redact("\n".join(lines)),
+        encoding="utf-8",
+    )
 
-    json_output = OUTPUT_FOLDER / f"{transcript_file.stem}_qa_analysis.json"
+    json_output = OUTPUT_FOLDER / f"{safe_stem}_qa_analysis.json"
+    payload = pci_service.redact_structure(
+        {
+            "agent": agent_name,
+            "source_file": transcript_file.name,
+            "qa_score": score,
+            "risk_level": risk,
+            "opportunities": opportunities,
+            "section_results": section_results,
+            "auditor_notes": generate_auditor_notes(score, opportunities),
+            "coaching_summary": generate_coaching_summary(score, risk, opportunities),
+        }
+    )
     json_output.write_text(
         json.dumps(
-            {
-                "agent": agent_name,
-                "source_file": transcript_file.name,
-                "qa_score": score,
-                "risk_level": risk,
-                "opportunities": opportunities,
-                "section_results": section_results,
-                "auditor_notes": generate_auditor_notes(score, opportunities),
-                "coaching_summary": generate_coaching_summary(score, risk, opportunities),
-            },
+            payload,
             indent=4,
             ensure_ascii=False,
         ),
@@ -284,4 +295,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

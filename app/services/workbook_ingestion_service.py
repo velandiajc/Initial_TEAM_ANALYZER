@@ -5,6 +5,8 @@ from typing import Any
 
 import pandas as pd
 
+from app.services.pci_redaction_service import PCIRedactionService
+
 
 @dataclass
 class WorksheetInventory:
@@ -106,6 +108,9 @@ class WorkbookIngestionService:
         "ano",
         "icano",
     }
+
+    def __init__(self):
+        self.pci_redaction_service = PCIRedactionService()
 
     def ingest(self, workbook_path) -> WorkbookIngestionResult:
         sheets = self._read_workbook(workbook_path)
@@ -787,7 +792,7 @@ class WorkbookIngestionService:
         if self._is_blank_value(value):
             return ""
 
-        text = str(value)
+        text = self.pci_redaction_service.redact(value)
 
         if len(text) > self.CELL_VALUE_LIMIT:
             return text[:self.CELL_VALUE_LIMIT]
