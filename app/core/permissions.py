@@ -62,6 +62,11 @@ class OperationalImpactPermission(Enum):
     CALCULATE_RISK_PRIORITY = "calculate_risk_priority"
 
 
+class OperationalIntakePermission(Enum):
+    RUN_OPERATIONAL_INTAKE = "run_operational_intake"
+    VIEW_OPERATIONAL_INTAKE = "view_operational_intake"
+
+
 class WorkspacePermission(Enum):
     VIEW_SUPERVISOR_WORKSPACE = "view_supervisor_workspace"
     VIEW_SUPERVISOR_PRIORITY_QUEUE = "view_supervisor_priority_queue"
@@ -84,6 +89,9 @@ class RBACService:
         } | {
             permission.value
             for permission in OperationalImpactPermission
+        } | {
+            permission.value
+            for permission in OperationalIntakePermission
         } | {
             permission.value
             for permission in WorkspacePermission
@@ -110,6 +118,8 @@ class RBACService:
             OperationalImpactPermission.CALCULATE_OPERATIONAL_IMPACT.value,
             OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
             OperationalImpactPermission.CALCULATE_RISK_PRIORITY.value,
+            OperationalIntakePermission.RUN_OPERATIONAL_INTAKE.value,
+            OperationalIntakePermission.VIEW_OPERATIONAL_INTAKE.value,
         },
         GovernanceRole.KPI_STEWARD.value: {
             KPIPermission.WRITE_THRESHOLD.value,
@@ -125,6 +135,8 @@ class RBACService:
             OperationalImpactPermission.VIEW_OPERATIONAL_IMPACT.value,
             OperationalImpactPermission.CALCULATE_OPERATIONAL_IMPACT.value,
             OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
+            OperationalIntakePermission.RUN_OPERATIONAL_INTAKE.value,
+            OperationalIntakePermission.VIEW_OPERATIONAL_INTAKE.value,
         },
         GovernanceRole.KPI_APPROVER.value: {
             KPIPermission.APPROVE_FORMULA.value,
@@ -140,6 +152,7 @@ class RBACService:
             OperationalImpactPermission.VIEW_OPERATIONAL_IMPACT.value,
             OperationalImpactPermission.VIEW_RISK_PRIORITY.value,
             OperationalImpactPermission.CALCULATE_RISK_PRIORITY.value,
+            OperationalIntakePermission.VIEW_OPERATIONAL_INTAKE.value,
         },
         GovernanceRole.PERFORMANCE_COACH.value: {
             CoachingPermission.VIEW_COACHING_SESSION.value,
@@ -169,6 +182,8 @@ class RBACService:
             WorkspacePermission.VIEW_EMPLOYEE_TIMELINE.value,
             WorkspacePermission.VIEW_COACHING_WORKSPACE.value,
             WorkspacePermission.VIEW_PRIVATE_COACHING_NOTES.value,
+            OperationalIntakePermission.RUN_OPERATIONAL_INTAKE.value,
+            OperationalIntakePermission.VIEW_OPERATIONAL_INTAKE.value,
         },
         GovernanceRole.LEADERSHIP.value: {
             CoachingPermission.VIEW_COACHING_SESSION.value,
@@ -184,6 +199,7 @@ class RBACService:
             WorkspacePermission.VIEW_COACHING_WORKSPACE.value,
             WorkspacePermission.VIEW_PRIVATE_COACHING_NOTES.value,
             WorkspacePermission.VIEW_LEADERSHIP_NOTES.value,
+            OperationalIntakePermission.VIEW_OPERATIONAL_INTAKE.value,
         },
     }
 
@@ -194,6 +210,7 @@ class RBACService:
             KPIPermission
             | CoachingPermission
             | OperationalImpactPermission
+            | OperationalIntakePermission
             | WorkspacePermission
             | str
         )
@@ -213,6 +230,7 @@ class RBACService:
             KPIPermission
             | CoachingPermission
             | OperationalImpactPermission
+            | OperationalIntakePermission
             | WorkspacePermission
             | str
         )
@@ -276,6 +294,7 @@ class RBACService:
             KPIPermission
             | CoachingPermission
             | OperationalImpactPermission
+            | OperationalIntakePermission
             | WorkspacePermission
             | str
         )
@@ -286,6 +305,7 @@ class RBACService:
                 KPIPermission,
                 CoachingPermission,
                 OperationalImpactPermission,
+                OperationalIntakePermission,
                 WorkspacePermission,
             ),
         ):
