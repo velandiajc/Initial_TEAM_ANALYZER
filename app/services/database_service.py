@@ -32,6 +32,7 @@ class DatabaseService:
             conn.execute("PRAGMA foreign_keys = OFF")
             cursor = conn.cursor()
             self._initialize_legacy_tables(cursor)
+            self._initialize_operational_intake_tables(cursor)
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS kpi_definitions (
@@ -620,10 +621,96 @@ class DatabaseService:
 
             self._create_performance_history_triggers(cursor)
             self._create_operational_impact_history_triggers(cursor)
+            self._create_operational_intake_history_triggers(cursor)
             self._create_pci_persistence_triggers(cursor)
 
             conn.commit()
             conn.execute("PRAGMA foreign_keys = ON")
+
+    def _initialize_operational_intake_tables(self, cursor):
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS operational_intake_runs (
+                tenant_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                source_file TEXT NOT NULL,
+                source_file_name TEXT NOT NULL,
+                total_records INTEGER NOT NULL,
+                detractor_count INTEGER NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                PRIMARY KEY (tenant_id, run_id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS operational_intake_records (
+                tenant_id TEXT NOT NULL,
+                intake_record_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                contact_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL DEFAULT '',
+                agent_name TEXT NOT NULL DEFAULT '',
+                score REAL NOT NULL,
+                classification TEXT NOT NULL,
+                driver TEXT NOT NULL,
+                sub_driver TEXT NOT NULL DEFAULT '',
+                csat_category TEXT NOT NULL DEFAULT '',
+                impact_score REAL NOT NULL,
+                survey_date TEXT NOT NULL DEFAULT '',
+                brand TEXT NOT NULL DEFAULT '',
+                media_type TEXT NOT NULL DEFAULT '',
+                disposition TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (tenant_id, intake_record_id),
+                FOREIGN KEY (tenant_id, run_id)
+                    REFERENCES operational_intake_runs(tenant_id, run_id)
+            )
+        """)
+        self._ensure_column(
+            cursor,
+            "operational_intake_records",
+            "sub_driver",
+            "TEXT NOT NULL DEFAULT ''"
+        )
+        self._ensure_column(
+            cursor,
+            "operational_intake_records",
+            "csat_category",
+            "TEXT NOT NULL DEFAULT ''"
+        )
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS operational_intake_priorities (
+                tenant_id TEXT NOT NULL,
+                priority_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                driver TEXT NOT NULL,
+                detractor_count INTEGER NOT NULL,
+                impact_score REAL NOT NULL,
+                impact_rank INTEGER NOT NULL,
+                priority_rank INTEGER NOT NULL,
+                priority_reason TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (tenant_id, priority_id),
+                FOREIGN KEY (tenant_id, run_id)
+                    REFERENCES operational_intake_runs(tenant_id, run_id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS operational_intake_reports (
+                tenant_id TEXT NOT NULL,
+                report_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                report_path TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (tenant_id, report_id),
+                FOREIGN KEY (tenant_id, run_id)
+                    REFERENCES operational_intake_runs(tenant_id, run_id)
+            )
+        """)
 
     def _initialize_legacy_tables(self, cursor):
         if (
@@ -1053,3 +1140,32 @@ class DatabaseService:
                 );
             END
         """)
+
+    def _create_operational_intake_history_triggers(self, cursor):
+        protected_tables = [
+            "operational_intake_runs",
+            "operational_intake_records",
+            "operational_intake_priorities",
+            "operational_intake_reports",
+        ]
+        for table_name in protected_tables:
+            cursor.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS no_delete_{table_name}
+                BEFORE DELETE ON {table_name}
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'Operational Intake records cannot be deleted.'
+                    );
+                END
+            """)
+            cursor.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS immutable_{table_name}
+                BEFORE UPDATE ON {table_name}
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'Operational Intake history is immutable.'
+                    );
+                END
+            """)
